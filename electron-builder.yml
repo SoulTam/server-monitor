@@ -1,0 +1,28 @@
+appId: com.server-monitor.app
+productName: Server Monitor
+directories:
+  output: out
+  buildResources: resources
+files:
+  - dist/**/*
+  - resources/**/*
+  - "!node_modules/**/{test,tests,__tests__}/**"
+  - "!node_modules/**/*.{md,ts,map}"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/@electron/remote/**"
+extraResources:
+  - from: resources/
+    to: resources/
