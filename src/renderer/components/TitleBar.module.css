@@ -1,0 +1,71 @@
+.titleBar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  -webkit-app-region: drag;
+  user-select: none;
+  padding: 0 12px;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+  margin-left: 24px;
+  -webkit-app-region: no-drag;
+}
+
+.navLink {
+  font-size: 12px;
+  color: #666;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.navLink:hover {
+  color: var(--color-primary);
+  background: #f0f5ff;
+}
+
+.navLinkActive {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.actionBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #666;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.actionBtn:hover {
+  background: #f0f0f0;
+}
+
+.closeBtn:hover {
+  background: #ff4d4f;
+  color: #fff;
+}
