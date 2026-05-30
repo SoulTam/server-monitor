@@ -171,8 +171,11 @@ export class CollectService {
 
     if (monitorItems.includes('disk')) {
       try {
-        metrics.disk = await this.collectDisk(serverId);
-        dataService.saveMetric({ serverId, metricType: 'disk', value: metrics.disk, timestamp });
+        const diskResult = await this.collectDisk(serverId);
+        metrics.disk = diskResult.usage;
+        metrics.diskUsed = diskResult.used;
+        metrics.diskTotal = diskResult.total;
+        dataService.saveMetric({ serverId, metricType: 'disk', value: diskResult.usage, details: JSON.stringify({ used: diskResult.used, total: diskResult.total }), timestamp });
       } catch (e) { log.warn(`Disk collection failed: ${(e as Error).message}`); hasError = true; }
     }
 
@@ -236,12 +239,15 @@ export class CollectService {
     return Math.round(usage * 10) / 10;
   }
 
-  private async collectDisk(serverId: string): Promise<number> {
-    const output = await sshService.executeCommand(serverId, 'df -h / | tail -1');
+  private async collectDisk(serverId: string): Promise<{ usage: number; used: number; total: number }> {
+    const output = await sshService.executeCommand(serverId, 'df / | tail -1');
     const parts = output.trim().split(/\s+/);
-    const useStr = parts.find((p) => p.endsWith('%'));
-    if (!useStr) throw new Error('Invalid disk output');
-    return parseInt(useStr.replace('%', ''), 10);
+    const useIdx = parts.findIndex((p) => p.endsWith('%'));
+    if (useIdx === -1) throw new Error('Invalid disk output');
+    const usage = parseInt(parts[useIdx].replace('%', ''), 10);
+    const total = parseInt(parts[useIdx - 3], 10) * 1024;
+    const used = parseInt(parts[useIdx - 2], 10) * 1024;
+    return { usage, used, total };
   }
 
   private async collectSystemInfo(serverId: string): Promise<void> {

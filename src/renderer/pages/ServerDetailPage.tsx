@@ -10,6 +10,23 @@ import type { MetricType, MetricRecord } from '../../shared/types';
 
 type TimeRange = '1h' | '6h' | '24h' | '7d';
 
+function formatBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(1)}${units[i]}`;
+}
+
+function parseDiskDetails(details?: string): { used: number; total: number } | null {
+  if (!details) return null;
+  try {
+    const d = JSON.parse(details);
+    if (typeof d.used === 'number' && typeof d.total === 'number') return d;
+  } catch { /* ignore */ }
+  return null;
+}
+
 export default function ServerDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -49,6 +66,57 @@ export default function ServerDetailPage(): JSX.Element {
     if (!id) return;
     const unsubscribe = window.electronAPI.monitor.onMetrics((metrics) => {
       useMonitorStore.getState().pushRealtime(metrics);
+      if (metrics.serverId !== id) return;
+
+      const ts = metrics.timestamp || new Date().toISOString();
+      setHistoryData((prev) => {
+        const next: Record<MetricType, MetricRecord[]> = { ...prev };
+
+        if (metrics.cpu !== undefined) {
+          const records = prev.cpu;
+          const last = records[records.length - 1];
+          if (!last || Math.abs(new Date(ts).getTime() - new Date(last.timestamp).getTime()) >= 3000) {
+            next.cpu = [...records, { id: '', serverId: id, metricType: 'cpu' as MetricType, value: metrics.cpu, timestamp: ts }];
+          } else {
+            next.cpu = [...records.slice(0, -1), { ...last, value: metrics.cpu, timestamp: ts }];
+          }
+        }
+
+        if (metrics.memory !== undefined) {
+          const records = prev.memory;
+          const last = records[records.length - 1];
+          if (!last || Math.abs(new Date(ts).getTime() - new Date(last.timestamp).getTime()) >= 3000) {
+            next.memory = [...records, { id: '', serverId: id, metricType: 'memory' as MetricType, value: metrics.memory, timestamp: ts }];
+          } else {
+            next.memory = [...records.slice(0, -1), { ...last, value: metrics.memory, timestamp: ts }];
+          }
+        }
+
+        if (metrics.disk !== undefined) {
+          const records = prev.disk;
+          const last = records[records.length - 1];
+          const details = metrics.diskUsed !== undefined && metrics.diskTotal !== undefined
+            ? JSON.stringify({ used: metrics.diskUsed, total: metrics.diskTotal })
+            : undefined;
+          if (!last || Math.abs(new Date(ts).getTime() - new Date(last.timestamp).getTime()) >= 3000) {
+            next.disk = [...records, { id: '', serverId: id, metricType: 'disk' as MetricType, value: metrics.disk, details, timestamp: ts }];
+          } else {
+            next.disk = [...records.slice(0, -1), { ...last, value: metrics.disk, details, timestamp: ts }];
+          }
+        }
+
+        if (metrics.networkUp !== undefined && metrics.networkDown !== undefined) {
+          const records = prev.network;
+          const last = records[records.length - 1];
+          if (!last || Math.abs(new Date(ts).getTime() - new Date(last.timestamp).getTime()) >= 3000) {
+            next.network = [...records, { id: '', serverId: id, metricType: 'network' as MetricType, value: metrics.networkUp + metrics.networkDown, timestamp: ts }];
+          } else {
+            next.network = [...records.slice(0, -1), { ...last, value: metrics.networkUp + metrics.networkDown, timestamp: ts }];
+          }
+        }
+
+        return next;
+      });
     });
     return unsubscribe;
   }, [id]);
@@ -125,10 +193,23 @@ export default function ServerDetailPage(): JSX.Element {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <TrendChart title="CPU使用率" data={historyData.cpu} unit="%" color="#1677ff" threshold={server.cpuThreshold} />
-        <TrendChart title="内存使用率" data={historyData.memory} unit="%" color="#52c41a" threshold={server.memoryThreshold} />
-        <TrendChart title="磁盘使用率" data={historyData.disk} unit="%" color="#faad14" threshold={server.diskThreshold} />
-        <TrendChart title="网络流量" data={historyData.network} unit="Mbps" color="#722ed1" threshold={server.networkThreshold} />
+        <TrendChart title="CPU使用率" data={historyData.cpu} unit="%" color="#1677ff" threshold={server.cpuThreshold} timeRange={timeRange} />
+        <TrendChart title="内存使用率" data={historyData.memory} unit="%" color="#52c41a" threshold={server.memoryThreshold} timeRange={timeRange} />
+        <div>
+          <TrendChart title="磁盘使用率" data={historyData.disk} unit="%" color="#faad14" threshold={server.diskThreshold} timeRange={timeRange} />
+          {(() => {
+            const latest = historyData.disk[historyData.disk.length - 1];
+            const dd = latest?.details ? parseDiskDetails(latest.details) : null;
+            if (!dd) return null;
+            const pct = (dd.used / dd.total * 100).toFixed(1);
+            return (
+              <div style={{ fontSize: 12, color: '#666', textAlign: 'center', marginTop: 4 }}>
+                [{server.ip}:{server.port}] 已使用 {formatBytes(dd.used)} / {formatBytes(dd.total)} ({pct}%)
+              </div>
+            );
+          })()}
+        </div>
+        <TrendChart title="网络流量" data={historyData.network} unit="Mbps" color="#722ed1" threshold={server.networkThreshold} timeRange={timeRange} />
       </div>
     </div>
   );

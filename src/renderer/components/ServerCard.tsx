@@ -5,6 +5,14 @@ import { useMonitorStore } from '../stores/monitorStore';
 import type { ServerWithMetrics } from '../../shared/ipc-types';
 import styles from './ServerCard.module.css';
 
+function formatBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(1)}${units[i]}`;
+}
+
 interface ServerCardProps {
   server: ServerWithMetrics;
   onEdit: () => void;
@@ -27,6 +35,11 @@ export default function ServerCard({ server, onEdit, onDelete, onStart, onStop, 
   const cpu = realtime?.cpu ?? server.latestMetrics?.cpu;
   const memory = realtime?.memory ?? server.latestMetrics?.memory;
   const disk = realtime?.disk ?? server.latestMetrics?.disk;
+  const diskUsed = realtime?.diskUsed ?? server.latestMetrics?.diskUsed;
+  const diskTotal = realtime?.diskTotal ?? server.latestMetrics?.diskTotal;
+  const diskExtra = diskUsed !== undefined && diskTotal !== undefined
+    ? `${formatBytes(diskUsed)} / ${formatBytes(diskTotal)}`
+    : '';
 
   return (
     <Card className={styles.card} size="small" onClick={onDetail}>
@@ -58,8 +71,11 @@ export default function ServerCard({ server, onEdit, onDelete, onStart, onStop, 
         </div>
         <div className={styles.metricItem}>
           <span className={styles.metricLabel}>磁盘</span>
-          <span className={disk !== undefined && disk > server.diskThreshold ? styles.overThreshold : styles.metricValue}>
-            {disk !== undefined ? `${disk.toFixed(0)}%` : '-'}
+          <span>
+            <span className={disk !== undefined && disk > server.diskThreshold ? styles.overThreshold : styles.metricValue}>
+              {disk !== undefined ? `${disk.toFixed(0)}%` : '-'}
+            </span>
+            {diskExtra && <span className={styles.metricExtra}> {diskExtra}</span>}
           </span>
         </div>
         <div className={styles.metricItem}>
