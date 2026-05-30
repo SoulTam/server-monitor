@@ -61,6 +61,8 @@ export interface ServerWithMetrics extends ServerConfig {
     cpu?: number;
     memory?: number;
     disk?: number;
+    diskUsed?: number;
+    diskTotal?: number;
     networkUp?: number;
     networkDown?: number;
   };

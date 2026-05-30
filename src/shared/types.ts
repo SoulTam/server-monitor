@@ -60,6 +60,8 @@ export interface RealtimeMetrics {
   cpu?: number;
   memory?: number;
   disk?: number;
+  diskUsed?: number;
+  diskTotal?: number;
   networkUp?: number;
   networkDown?: number;
   timestamp: string;
