@@ -11,7 +11,7 @@ export class DataService {
       INSERT INTO servers (id, name, ip, port, username, auth_type, password_encrypted, private_key_path, private_key_passphrase, system_info,
         monitor_interval, monitor_items, cpu_threshold, memory_threshold, disk_threshold, network_threshold, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ).run(
+    `).run(
       id, server.name, server.ip, server.port, server.username, server.authType,
       server.password || null, server.privateKeyPath || null, server.privateKeyPassphrase || null, server.logsPath || null,
       server.systemInfo ? JSON.stringify(server.systemInfo) : null,
