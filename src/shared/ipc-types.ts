@@ -9,6 +9,7 @@ export interface CreateServerInput {
   password?: string;
   privateKeyPath?: string;
   privateKeyPassphrase?: string;
+  logsPath?: string;
   monitorInterval?: number;
   monitorItems?: MetricType[];
   cpuThreshold?: number;
@@ -27,6 +28,7 @@ export interface UpdateServerInput {
   password?: string;
   privateKeyPath?: string;
   privateKeyPassphrase?: string;
+  logsPath?: string;
   monitorInterval?: number;
   monitorItems?: MetricType[];
   cpuThreshold?: number;

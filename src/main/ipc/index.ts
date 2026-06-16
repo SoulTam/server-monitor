@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import log from 'electron-log';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { serverConfigService } from '../services/ServerConfigService';
+import { sshService } from '../services/SshService';
 import { collectService } from '../services/CollectService';
 import { alertService } from '../services/AlertService';
 import { dataService } from '../database/DataService';
@@ -48,6 +49,65 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.SERVER_GET_DETAIL, (_e, id: string) =>
     wrap(() => serverConfigService.getServerForDisplay(id)),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.LOG_LIST, (_e, payload: { serverId: string }) =>
+    wrap(async () => {
+      const { serverId } = payload;
+      const server = serverConfigService.getServer(serverId);
+      if (!server) throw new Error('SERVER_NOT_FOUND');
+      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
+      // ensure connected
+      if (!sshService.isConnected(serverId)) {
+        await sshService.connect(serverId, {
+          host: server.ip,
+          port: server.port,
+          username: server.username,
+          authType: server.authType,
+          password: server.password,
+          privateKeyPath: server.privateKeyPath,
+          privateKeyPassphrase: server.privateKeyPassphrase,
+        });
+      }
+      // list files recursively under server.logsPath (limit depth 5)
+      const cmd = `find ${server.logsPath} -maxdepth 5 -type f -print`;
+      const out = await sshService.executeCommand(serverId, cmd);
+      const files = out.split('\n').filter(Boolean);
+      return files;
+    }),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.LOG_READ, (_e, payload: { serverId: string; filePath: string; offset?: number; length?: number }) =>
+    wrap(async () => {
+      const { serverId, filePath, offset = 0, length } = payload;
+      const server = serverConfigService.getServer(serverId);
+      if (!server) throw new Error('SERVER_NOT_FOUND');
+      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
+      // Ensure filePath is within logsPath
+      if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
+      if (!sshService.isConnected(serverId)) {
+        await sshService.connect(serverId, {
+          host: server.ip,
+          port: server.port,
+          username: server.username,
+          authType: server.authType,
+          password: server.password,
+          privateKeyPath: server.privateKeyPath,
+          privateKeyPassphrase: server.privateKeyPassphrase,
+        });
+      }
+      // Use dd to read a range if length provided, else cat
+      let cmd: string;
+      if (length && length > 0) {
+        cmd = `dd if=${filePath} bs=1 skip=${offset} count=${length} 2>/dev/null | base64`;
+        const b64 = await sshService.executeCommand(serverId, cmd);
+        const buf = Buffer.from(b64.trim(), 'base64');
+        return buf.toString('utf8');
+      }
+      cmd = `cat ${filePath}`;
+      const out = await sshService.executeCommand(serverId, cmd);
+      return out;
+    }),
   );
 
   ipcMain.handle(IPC_CHANNELS.MONITOR_START, (_e, serverId: string) =>

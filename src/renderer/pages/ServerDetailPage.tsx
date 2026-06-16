@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Space, Tag, message, Segmented } from 'antd';
+import { Button, Space, Tag, message, Segmented, Modal, Input, List } from 'antd';
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
@@ -31,6 +31,11 @@ export default function ServerDetailPage(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [server, setServer] = useState<ServerWithMetrics | null>(null);
+  const [logsModalVisible, setLogsModalVisible] = useState(false);
+  const [configModalVisible, setConfigModalVisible] = useState(false);
+  const [logsList, setLogsList] = useState<string[]>([]);
+  const [selectedLogContent, setSelectedLogContent] = useState<string | null>(null);
+  const [configPathInput, setConfigPathInput] = useState('');
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [historyData, setHistoryData] = useState<Record<MetricType, MetricRecord[]>>({
     cpu: [], memory: [], disk: [], network: [],
@@ -143,6 +148,55 @@ export default function ServerDetailPage(): JSX.Element {
     }
   };
 
+  const handleOpenConfig = (): void => {
+    setConfigPathInput(server?.logsPath || '');
+    setConfigModalVisible(true);
+  };
+
+  const handleSaveConfig = async (): Promise<void> => {
+    if (!id) return;
+    const res = await window.electronAPI.server.update({ id, logsPath: configPathInput } as any);
+    if (res.success) {
+      message.success('日志路径已保存');
+      setServer((s) => s ? { ...s, logsPath: configPathInput } : s);
+      setConfigModalVisible(false);
+    } else {
+      message.error(res.error || '保存失败');
+    }
+  };
+
+  const handleOpenLogs = async (): Promise<void> => {
+    if (!id || !server) return;
+    try {
+      const res = await window.electronAPI.logs.list(id);
+      if (res.success && Array.isArray(res.data)) {
+        setLogsList(res.data as string[]);
+        setLogsModalVisible(true);
+      } else {
+        message.error(res.error || '无法列出日志');
+      }
+    } catch (e) {
+      message.error('读取日志列表失败');
+    }
+  };
+
+  const handleReadLog = async (filePath: string): Promise<void> => {
+    if (!id) return;
+    const res = await window.electronAPI.logs.read(id, filePath);
+    if (res.success) {
+      const txt = res.data as string;
+      // try parse JSON
+      try {
+        const obj = JSON.parse(txt);
+        setSelectedLogContent(JSON.stringify(obj, null, 2));
+      } catch {
+        setSelectedLogContent(txt);
+      }
+    } else {
+      message.error(res.error || '读取日志文件失败');
+    }
+  };
+
   if (!server) return <div>加载中...</div>;
 
   const statusTag: Record<string, JSX.Element> = {
@@ -162,6 +216,11 @@ export default function ServerDetailPage(): JSX.Element {
           <Button icon={<PauseCircleOutlined />} onClick={handleStop}>停止监控</Button>
         ) : (
           <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleStart}>启动监控</Button>
+        )}
+        {server.logsPath ? (
+          <Button onClick={handleOpenLogs}>浏览日志</Button>
+        ) : (
+          <Button onClick={handleOpenConfig}>配置日志</Button>
         )}
       </Space>
 
@@ -212,5 +271,34 @@ export default function ServerDetailPage(): JSX.Element {
         <TrendChart title="网络流量" data={historyData.network} unit="Mbps" color="#722ed1" threshold={server.networkThreshold} timeRange={timeRange} />
       </div>
     </div>
+      <Modal
+        title={server?.logsPath ? '日志列表' : '日志配置'}
+        open={logsModalVisible}
+        onCancel={() => setLogsModalVisible(false)}
+        footer={null}
+        width={800}
+      >
+        <div style={{ display: 'flex', gap: 12 }}>
+          <List
+            style={{ width: 320, maxHeight: 500, overflow: 'auto' }}
+            dataSource={logsList}
+            renderItem={(item) => (
+              <List.Item onClick={() => handleReadLog(item)} style={{ cursor: 'pointer' }}>{item}</List.Item>
+            )}
+          />
+          <div style={{ flex: 1, maxHeight: 500, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12 }}>
+            {selectedLogContent || <span style={{ color: '#999' }}>选择文件以查看内容</span>}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        title="配置日志目录"
+        open={configModalVisible}
+        onCancel={() => setConfigModalVisible(false)}
+        onOk={handleSaveConfig}
+      >
+        <Input value={configPathInput} onChange={(e) => setConfigPathInput(e.target.value)} placeholder="输入远程服务器上的日志目录路径，例如 /var/log/myapp" />
+      </Modal>
   );
 }

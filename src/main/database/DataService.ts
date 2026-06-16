@@ -11,9 +11,9 @@ export class DataService {
       INSERT INTO servers (id, name, ip, port, username, auth_type, password_encrypted, private_key_path, private_key_passphrase, system_info,
         monitor_interval, monitor_items, cpu_threshold, memory_threshold, disk_threshold, network_threshold, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    ).run(
       id, server.name, server.ip, server.port, server.username, server.authType,
-      server.password || null, server.privateKeyPath || null, server.privateKeyPassphrase || null,
+      server.password || null, server.privateKeyPath || null, server.privateKeyPassphrase || null, server.logsPath || null,
       server.systemInfo ? JSON.stringify(server.systemInfo) : null,
       server.monitorInterval, JSON.stringify(server.monitorItems),
       server.cpuThreshold, server.memoryThreshold, server.diskThreshold, server.networkThreshold,
@@ -30,7 +30,7 @@ export class DataService {
     const fieldMap: Record<string, string> = {
       name: 'name', ip: 'ip', port: 'port', username: 'username',
       authType: 'auth_type', password: 'password_encrypted', privateKeyPath: 'private_key_path',
-      privateKeyPassphrase: 'private_key_passphrase', systemInfo: 'system_info',
+      privateKeyPassphrase: 'private_key_passphrase', logsPath: 'logs_path', systemInfo: 'system_info',
       monitorInterval: 'monitor_interval', cpuThreshold: 'cpu_threshold',
       memoryThreshold: 'memory_threshold', diskThreshold: 'disk_threshold',
       networkThreshold: 'network_threshold', status: 'status',
@@ -199,6 +199,7 @@ export class DataService {
       password: row.password_encrypted as string | undefined,
       privateKeyPath: row.private_key_path as string | undefined,
       privateKeyPassphrase: row.private_key_passphrase as string | undefined,
+        logsPath: row.logs_path as string | undefined,
       systemInfo: row.system_info ? JSON.parse(row.system_info as string) : undefined,
       monitorInterval: row.monitor_interval as number,
       monitorItems: JSON.parse(row.monitor_items as string),

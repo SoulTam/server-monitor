@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS servers (
   auth_type TEXT NOT NULL CHECK(auth_type IN ('password', 'key')),
   password_encrypted TEXT,
   private_key_path TEXT,
+  private_key_passphrase TEXT,
+  logs_path TEXT,
   monitor_interval INTEGER NOT NULL DEFAULT 30,
   monitor_items TEXT NOT NULL DEFAULT '["cpu","memory","disk","network"]',
   cpu_threshold INTEGER NOT NULL DEFAULT 90,
@@ -57,7 +59,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 `;
 
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 let db: Database.Database | null = null;
 
@@ -100,6 +102,12 @@ function initSchema(database: Database.Database): void {
     log.info('Migrating database to version 3: add system_info column');
     database.exec("ALTER TABLE servers ADD COLUMN system_info TEXT");
     database.prepare('INSERT INTO schema_version (version) VALUES (3)').run();
+  }
+
+  if (ver < 4) {
+    log.info('Migrating database to version 4: add logs_path column');
+    database.exec("ALTER TABLE servers ADD COLUMN logs_path TEXT");
+    database.prepare('INSERT INTO schema_version (version) VALUES (4)').run();
   }
 }
 

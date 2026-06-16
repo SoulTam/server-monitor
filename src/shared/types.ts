@@ -18,6 +18,7 @@ export interface ServerConfig {
   password?: string;
   privateKeyPath?: string;
   privateKeyPassphrase?: string;
+  logsPath?: string;
   systemInfo?: SystemInfo;
   monitorInterval: number;
   monitorItems: MetricType[];
