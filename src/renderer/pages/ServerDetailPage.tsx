@@ -206,6 +206,7 @@ export default function ServerDetailPage(): JSX.Element {
   };
 
   return (
+    <>
     <div>
       <Space style={{ marginBottom: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回</Button>
@@ -300,5 +301,6 @@ export default function ServerDetailPage(): JSX.Element {
       >
         <Input value={configPathInput} onChange={(e) => setConfigPathInput(e.target.value)} placeholder="输入远程服务器上的日志目录路径，例如 /var/log/myapp" />
       </Modal>
+    </>
   );
 }
