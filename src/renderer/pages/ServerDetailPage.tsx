@@ -160,6 +160,9 @@ export default function ServerDetailPage(): JSX.Element {
       message.success('日志路径已保存');
       setServer((s) => s ? { ...s, logsPath: configPathInput } : s);
       setConfigModalVisible(false);
+      if (logsModalVisible) {
+        handleOpenLogs();
+      }
     } else {
       message.error(res.error || '保存失败');
     }
@@ -273,7 +276,12 @@ export default function ServerDetailPage(): JSX.Element {
       </div>
     </div>
       <Modal
-        title={server?.logsPath ? '日志列表' : '日志配置'}
+        title={
+          <Space>
+            <span>日志列表</span>
+            <Button type="link" size="small" onClick={handleOpenConfig}>修改路径</Button>
+          </Space>
+        }
         open={logsModalVisible}
         onCancel={() => setLogsModalVisible(false)}
         footer={null}
