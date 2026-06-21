@@ -18,6 +18,14 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(1)}${units[i]}`;
 }
 
+function formatJsonLine(line: string): string {
+  try {
+    return JSON.stringify(JSON.parse(line), null, 2);
+  } catch {
+    return line;
+  }
+}
+
 function parseDiskDetails(details?: string): { used: number; total: number } | null {
   if (!details) return null;
   try {
@@ -215,7 +223,7 @@ export default function ServerDetailPage(): JSX.Element {
           hasMoreRef.current = false;
           setHasMore(false);
         }
-        setLogContent(prev => prev + chunk);
+        setLogContent(prev => prev + chunk.split('\n').map(formatJsonLine).join('\n'));
         logOffsetRef.current = offset + new TextEncoder().encode(chunk).length;
       } else {
         message.error(res.error || '读取日志文件失败');
@@ -241,14 +249,7 @@ export default function ServerDetailPage(): JSX.Element {
         hasMoreRef.current = false;
         setHasMore(false);
       }
-      try {
-        const obj = JSON.parse(chunk);
-        setLogContent(JSON.stringify(obj, null, 2));
-        hasMoreRef.current = false;
-        setHasMore(false);
-      } catch {
-        setLogContent(chunk);
-      }
+      setLogContent(chunk.split('\n').map(formatJsonLine).join('\n'));
       logOffsetRef.current = new TextEncoder().encode(chunk).length;
     } else {
       message.error(res.error || '读取日志文件失败');
