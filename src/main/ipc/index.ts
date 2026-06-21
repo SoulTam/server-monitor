@@ -113,6 +113,19 @@ export function registerIpcHandlers(): void {
     }),
   );
 
+  ipcMain.handle(IPC_CHANNELS.LOG_STAT, (_e, payload: { serverId: string; filePath: string }) =>
+    wrap(async () => {
+      const { serverId, filePath } = payload;
+      const server = serverConfigService.getServer(serverId);
+      if (!server) throw new Error('SERVER_NOT_FOUND');
+      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
+      if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
+      const cmd = `wc -c '${filePath}' | awk '{print $1}'`;
+      const out = await sshService.executeCommand(serverId, cmd);
+      return parseInt(out.trim(), 10);
+    }),
+  );
+
   ipcMain.handle(IPC_CHANNELS.MONITOR_START, (_e, serverId: string) =>
     wrap(async () => {
       await collectService.startMonitoring(serverId);

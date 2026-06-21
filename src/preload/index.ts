@@ -22,6 +22,7 @@ const IPC_CHANNELS = {
   ALERT_NOTIFICATION: 'alert:notification',
   LOG_LIST: 'log:list',
   LOG_READ: 'log:read',
+  LOG_STAT: 'log:stat',
 } as const;
 
 const electronAPI = {
@@ -70,6 +71,8 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.LOG_LIST, { serverId }),
     read: (serverId: string, filePath: string, offset?: number, length?: number): Promise<IpcResponse<string>> =>
       ipcRenderer.invoke(IPC_CHANNELS.LOG_READ, { serverId, filePath, offset, length }),
+    stat: (serverId: string, filePath: string): Promise<IpcResponse<number>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.LOG_STAT, { serverId, filePath }),
   },
   window: {
     minimize: (): void => ipcRenderer.send('window:minimize'),

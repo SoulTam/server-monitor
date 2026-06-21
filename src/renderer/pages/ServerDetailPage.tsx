@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Space, Tag, message, Segmented, Modal, Input, List, Spin } from 'antd';
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
 import { useMonitorStore } from '../stores/monitorStore';
@@ -46,12 +46,17 @@ export default function ServerDetailPage(): JSX.Element {
   const [logContent, setLogContent] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [fileSize, setFileSize] = useState(0);
+  const [loadedBytes, setLoadedBytes] = useState(0);
   const CHUNK_SIZE = 65536;
   const logOffsetRef = useRef(0);
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
   const selectedFilePathRef = useRef<string | null>(null);
   const logContentRef = useRef<HTMLDivElement>(null);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const [leftWidth, setLeftWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
   const modalBodyRef = useRef<HTMLDivElement>(null);
@@ -222,10 +227,14 @@ export default function ServerDetailPage(): JSX.Element {
         if (chunk.length === 0) {
           hasMoreRef.current = false;
           setHasMore(false);
+          loadingRef.current = false;
+          setLoading(false);
           return;
         }
         setLogContent(prev => prev + chunk.split('\n').map(formatJsonLine).join('\n'));
-        logOffsetRef.current = offset + new TextEncoder().encode(chunk).length;
+        const bytes = new TextEncoder().encode(chunk).length;
+        logOffsetRef.current = offset + bytes;
+        setLoadedBytes(prev => prev + bytes);
       } else {
         message.error(res.error || '读取日志文件失败');
       }
@@ -243,6 +252,14 @@ export default function ServerDetailPage(): JSX.Element {
     logOffsetRef.current = 0;
     hasMoreRef.current = true;
     setHasMore(true);
+    setFileSize(0);
+    setLoadedBytes(0);
+    setSearchKeyword('');
+    setDebouncedSearch('');
+    // fetch file size
+    const statRes = await window.electronAPI.logs.stat(id!, filePath);
+    if (statRes.success) setFileSize(statRes.data as number);
+    // load first chunk
     const res = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
     if (res.success) {
       const chunk = res.data as string;
@@ -251,7 +268,9 @@ export default function ServerDetailPage(): JSX.Element {
         setHasMore(false);
       }
       setLogContent(chunk.split('\n').map(formatJsonLine).join('\n'));
-      logOffsetRef.current = new TextEncoder().encode(chunk).length;
+      const bytes = new TextEncoder().encode(chunk).length;
+      logOffsetRef.current = bytes;
+      setLoadedBytes(bytes);
     } else {
       message.error(res.error || '读取日志文件失败');
     }
@@ -268,6 +287,23 @@ export default function ServerDetailPage(): JSX.Element {
   const handleDividerMouseDown = (): void => {
     setIsDragging(true);
   };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const v = e.target.value;
+    setSearchKeyword(v);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => setDebouncedSearch(v), 300);
+  };
+
+  const matchCount = useMemo(() => {
+    if (!debouncedSearch || !logContent) return 0;
+    const parts = logContent.split(debouncedSearch);
+    return parts.length - 1;
+  }, [debouncedSearch, logContent]);
+
+  useEffect(() => {
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, []);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -362,16 +398,17 @@ export default function ServerDetailPage(): JSX.Element {
       </div>
     </div>
       <Modal
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 32 }}>
-            <Space>
-              <span>日志列表</span>
-              <Button type="link" size="small" onClick={handleOpenConfig}>修改路径</Button>
-            </Space>
-            <Button type="text" size="small" onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}>
-              <span style={{ fontSize: 16, lineHeight: 1 }}>{isLogMaximized ? '⧉' : '⛶'}</span>
-            </Button>
-          </div>
+        title={<span>日志列表</span>}
+        closeIcon={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <span
+              onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}
+              style={{ cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}
+            >
+              {isLogMaximized ? '⧉' : '⛶'}
+            </span>
+            <CloseOutlined style={{ fontSize: 12 }} />
+          </span>
         }
         open={logsModalVisible}
         onCancel={() => setLogsModalVisible(false)}
@@ -383,7 +420,26 @@ export default function ServerDetailPage(): JSX.Element {
           maxWidth: isLogMaximized ? 'calc(100vw - 48px)' : undefined,
         }}
       >
-        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? 'calc(100vh - 120px)' : 500 }}>
+        <div style={{ padding: '0 0 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Space size="small">
+            <Button type="link" size="small" style={{ padding: 0 }} onClick={handleOpenConfig}>修改路径</Button>
+            {fileSize > 0 && (
+              <span style={{ fontSize: 12, color: '#999' }}>
+                {((loadedBytes / fileSize) * 100).toFixed(1)}%
+              </span>
+            )}
+          </Space>
+          <Input
+            size="small"
+            placeholder="搜索..."
+            prefix={searchKeyword ? <span style={{ fontSize: 12, color: '#999' }}>{matchCount}</span> : undefined}
+            value={searchKeyword}
+            onChange={handleSearchChange}
+            style={{ width: 200, marginLeft: 'auto' }}
+            allowClear
+          />
+        </div>
+        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? 'calc(100vh - 170px)' : 480 }}>
           <div style={{ width: leftWidth, overflow: 'auto', flexShrink: 0 }}>
             <List
               dataSource={logsList}
@@ -417,7 +473,16 @@ export default function ServerDetailPage(): JSX.Element {
             style={{ flex: 1, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, fontSize: 13, fontFamily: 'monospace' }}
             onScroll={handleContentScroll}
           >
-            {logContent || <span style={{ color: '#999' }}>选择文件以查看内容</span>}
+            {!logContent && <span style={{ color: '#999' }}>选择文件以查看内容</span>}
+            {logContent && !debouncedSearch && logContent}
+            {logContent && debouncedSearch && (
+              <span dangerouslySetInnerHTML={{
+                __html: logContent
+                  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .split(debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                  .join(`<mark style="background:#ffd54f;padding:0 1px">${debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</mark>`)
+              }} />
+            )}
             {loading && (
               <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>
                 <Spin size="small" /> 加载中...
