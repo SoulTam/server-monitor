@@ -10,6 +10,7 @@ import { getDatabase } from './database/index';
 log.initialize();
 
 let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
 
 function getResourcePath(...segments: string[]): string {
   if (app.isPackaged) {
@@ -41,6 +42,7 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', (e) => {
+    if (isQuitting) return;
     e.preventDefault();
     mainWindow?.hide();
   });
@@ -94,4 +96,8 @@ ipcMain.on('window:close', () => {
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
+}
+
+export function setIsQuitting(value: boolean): void {
+  isQuitting = value;
 }

@@ -1,6 +1,6 @@
 import { Tray, Menu, nativeImage, app } from 'electron';
 import path from 'path';
-import { getMainWindow } from '../index';
+import { getMainWindow, setIsQuitting } from '../index';
 import { collectService } from './CollectService';
 import { sshService } from './SshService';
 import { closeDatabase } from '../database/index';
@@ -52,6 +52,7 @@ export class TrayService {
   }
 
   quit(): void {
+    setIsQuitting(true);
     collectService.stopAllMonitoring();
     sshService.disconnectAll();
     closeDatabase();
