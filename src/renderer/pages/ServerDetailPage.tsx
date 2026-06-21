@@ -36,14 +36,18 @@ export default function ServerDetailPage(): JSX.Element {
   const [logsList, setLogsList] = useState<{ fullPath: string; name: string }[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [logContent, setLogContent] = useState('');
-  const [logOffset, setLogOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const CHUNK_SIZE = 65536;
+  const logOffsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const loadingRef = useRef(false);
+  const selectedFilePathRef = useRef<string | null>(null);
+  const logContentRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
-  const logContentRef = useRef<HTMLDivElement>(null);
   const modalBodyRef = useRef<HTMLDivElement>(null);
+  const [isLogMaximized, setIsLogMaximized] = useState(false);
   const [configPathInput, setConfigPathInput] = useState('');
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [historyData, setHistoryData] = useState<Record<MetricType, MetricRecord[]>>({
@@ -189,7 +193,7 @@ export default function ServerDetailPage(): JSX.Element {
         setLogsModalVisible(true);
         setLogContent('');
         setSelectedFilePath(null);
-        setLogOffset(0);
+        hasMoreRef.current = true;
         setHasMore(true);
       } else {
         message.error(res.error || '无法列出日志');
@@ -201,50 +205,61 @@ export default function ServerDetailPage(): JSX.Element {
 
   const loadChunk = useCallback(async (filePath: string, offset: number): Promise<void> => {
     if (!id) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = await window.electronAPI.logs.read(id, filePath, offset, CHUNK_SIZE);
       if (res.success) {
         const chunk = res.data as string;
-        if (chunk.length < CHUNK_SIZE) setHasMore(false);
+        if (chunk.length < CHUNK_SIZE) {
+          hasMoreRef.current = false;
+          setHasMore(false);
+        }
         setLogContent(prev => prev + chunk);
-        setLogOffset(prev => prev + new TextEncoder().encode(chunk).length);
+        logOffsetRef.current = offset + new TextEncoder().encode(chunk).length;
       } else {
         message.error(res.error || '读取日志文件失败');
       }
     } catch (e) {
       message.error('读取日志文件失败');
     }
+    loadingRef.current = false;
     setLoading(false);
   }, [id]);
 
   const handleReadLog = async (filePath: string): Promise<void> => {
     setSelectedFilePath(filePath);
+    selectedFilePathRef.current = filePath;
     setLogContent('');
-    setLogOffset(0);
+    logOffsetRef.current = 0;
+    hasMoreRef.current = true;
     setHasMore(true);
     const res = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
     if (res.success) {
       const chunk = res.data as string;
-      if (chunk.length < CHUNK_SIZE) setHasMore(false);
-      // try parse JSON for first chunk
+      if (chunk.length < CHUNK_SIZE) {
+        hasMoreRef.current = false;
+        setHasMore(false);
+      }
       try {
         const obj = JSON.parse(chunk);
         setLogContent(JSON.stringify(obj, null, 2));
+        hasMoreRef.current = false;
         setHasMore(false);
       } catch {
         setLogContent(chunk);
       }
-      setLogOffset(new TextEncoder().encode(chunk).length);
+      logOffsetRef.current = new TextEncoder().encode(chunk).length;
     } else {
       message.error(res.error || '读取日志文件失败');
     }
   };
 
-  const handleContentScroll = (e: React.UIEvent<HTMLDivElement>): void => {
-    const el = e.currentTarget;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMore && !loading && selectedFilePath) {
-      loadChunk(selectedFilePath, logOffset);
+  const handleContentScroll = (): void => {
+    const el = logContentRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMoreRef.current && !loadingRef.current && selectedFilePathRef.current) {
+      loadChunk(selectedFilePathRef.current, logOffsetRef.current);
     }
   };
 
@@ -354,10 +369,16 @@ export default function ServerDetailPage(): JSX.Element {
         open={logsModalVisible}
         onCancel={() => setLogsModalVisible(false)}
         footer={null}
-        width={800}
-        style={{ userSelect: isDragging ? 'none' : undefined }}
+        width={isLogMaximized ? '95vw' : 800}
+        style={{ userSelect: isDragging ? 'none' : undefined, top: isLogMaximized ? 20 : undefined }}
       >
-        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: 500 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span />
+          <Button size="small" onClick={() => setIsLogMaximized(v => !v)}>
+            {isLogMaximized ? '还原' : '最大化'}
+          </Button>
+        </div>
+        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? '75vh' : 500 }}>
           <div style={{ width: leftWidth, overflow: 'auto', flexShrink: 0 }}>
             <List
               dataSource={logsList}
