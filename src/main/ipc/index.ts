@@ -120,7 +120,18 @@ export function registerIpcHandlers(): void {
       if (!server) throw new Error('SERVER_NOT_FOUND');
       if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
       if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
-      const cmd = `wc -c '${filePath}' | awk '{print $1}'`;
+      if (!sshService.isConnected(serverId)) {
+        await sshService.connect(serverId, {
+          host: server.ip,
+          port: server.port,
+          username: server.username,
+          authType: server.authType,
+          password: server.password,
+          privateKeyPath: server.privateKeyPath,
+          privateKeyPassphrase: server.privateKeyPassphrase,
+        });
+      }
+      const cmd = `wc -c < '${filePath}' 2>/dev/null || echo 0`;
       const out = await sshService.executeCommand(serverId, cmd);
       return parseInt(out.trim(), 10);
     }),

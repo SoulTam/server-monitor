@@ -399,29 +399,39 @@ export default function ServerDetailPage(): JSX.Element {
       </div>
     </div>
       <Modal
-        title={<span>日志列表</span>}
-        closeIcon={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
-            <span
-              onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}
-              style={{ cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 5px', display: 'inline-flex', alignItems: 'center', height: 22 }}
-              onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.06)'}
-              onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-            >
-              {isLogMaximized ? (
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                  <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="0" y="2" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-              ) : (
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                  <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-              )}
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingRight: 24 }}>
+            <span>日志列表</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+              <span
+                onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}
+                style={{ cursor: 'pointer', width: 30, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0 }}
+                onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.06)'}
+                onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+              >
+                {isLogMaximized ? (
+                  <svg width="10" height="10" viewBox="0 0 10 10">
+                    <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                    <rect x="0" y="2" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 10 10">
+                    <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                )}
+              </span>
+              <span
+                onClick={(e) => { e.stopPropagation(); setLogsModalVisible(false); }}
+                style={{ cursor: 'pointer', width: 30, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0 }}
+                onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.06)'}
+                onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+              >
+                <CloseOutlined style={{ fontSize: 11 }} />
+              </span>
             </span>
-            <CloseOutlined style={{ fontSize: 11 }} />
           </span>
         }
+        closable={false}
         open={logsModalVisible}
         onCancel={() => setLogsModalVisible(false)}
         footer={null}
@@ -435,9 +445,9 @@ export default function ServerDetailPage(): JSX.Element {
         <div style={{ padding: '0 0 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
           <Space size="small">
             <Button type="link" size="small" style={{ padding: 0 }} onClick={handleOpenConfig}>修改路径</Button>
-            {fileSize > 0 && (
+            {fileSize > 0 && loadedBytes > 0 && (
               <span style={{ fontSize: 12, color: '#999' }}>
-                {((loadedBytes / fileSize) * 100).toFixed(1)}%
+                {Math.min(100, ((loadedBytes / fileSize) * 100)).toFixed(1)}%
               </span>
             )}
           </Space>
