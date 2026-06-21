@@ -362,24 +362,27 @@ export default function ServerDetailPage(): JSX.Element {
     </div>
       <Modal
         title={
-          <Space>
-            <span>日志列表</span>
-            <Button type="link" size="small" onClick={handleOpenConfig}>修改路径</Button>
-          </Space>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 32 }}>
+            <Space>
+              <span>日志列表</span>
+              <Button type="link" size="small" onClick={handleOpenConfig}>修改路径</Button>
+            </Space>
+            <Button type="text" size="small" onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{isLogMaximized ? '⧉' : '⛶'}</span>
+            </Button>
+          </div>
         }
         open={logsModalVisible}
         onCancel={() => setLogsModalVisible(false)}
         footer={null}
-        width={isLogMaximized ? '95vw' : 800}
-        style={{ userSelect: isDragging ? 'none' : undefined, top: isLogMaximized ? 20 : undefined }}
+        width={isLogMaximized ? 'calc(100vw - 48px)' : 800}
+        style={{
+          userSelect: isDragging ? 'none' : undefined,
+          top: isLogMaximized ? 12 : undefined,
+          maxWidth: isLogMaximized ? 'calc(100vw - 48px)' : undefined,
+        }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span />
-          <Button size="small" onClick={() => setIsLogMaximized(v => !v)}>
-            {isLogMaximized ? '还原' : '最大化'}
-          </Button>
-        </div>
-        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? '75vh' : 500 }}>
+        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? 'calc(100vh - 120px)' : 500 }}>
           <div style={{ width: leftWidth, overflow: 'auto', flexShrink: 0 }}>
             <List
               dataSource={logsList}

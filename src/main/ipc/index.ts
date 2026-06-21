@@ -99,12 +99,15 @@ export function registerIpcHandlers(): void {
       // Use dd to read a range if length provided, else cat
       let cmd: string;
       if (length && length > 0) {
-        cmd = `dd if=${filePath} bs=1 skip=${offset} count=${length} 2>/dev/null | base64`;
+        const blockSize = 65536;
+        const blockSkip = Math.floor(offset / blockSize);
+        const blockCount = Math.ceil(length / blockSize);
+        cmd = `dd if='${filePath}' bs=${blockSize} skip=${blockSkip} count=${blockCount} 2>/dev/null | base64`;
         const b64 = await sshService.executeCommand(serverId, cmd);
         const buf = Buffer.from(b64.trim(), 'base64');
         return buf.toString('utf8');
       }
-      cmd = `cat ${filePath}`;
+      cmd = `cat '${filePath}'`;
       const out = await sshService.executeCommand(serverId, cmd);
       return out;
     }),
