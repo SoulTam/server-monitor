@@ -6,7 +6,7 @@ import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
 import { useMonitorStore } from '../stores/monitorStore';
 import type { ServerWithMetrics } from '../../shared/ipc-types';
-import type { MetricType, MetricRecord } from '../../shared/types';
+import type { MetricType, MetricRecord, IpcResponse } from '../../shared/types';
 
 type TimeRange = '1h' | '6h' | '24h' | '7d';
 
@@ -256,13 +256,14 @@ export default function ServerDetailPage(): JSX.Element {
     setLoadedBytes(0);
     setSearchKeyword('');
     setDebouncedSearch('');
-    // fetch file size
-    const statRes = await window.electronAPI.logs.stat(id!, filePath);
+    // load first chunk and fetch file size in parallel
+    const [readRes, statRes] = await Promise.all([
+      window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE),
+      window.electronAPI.logs.stat(id!, filePath).catch(() => ({ success: false } as IpcResponse<number>)),
+    ]);
     if (statRes.success) setFileSize(statRes.data as number);
-    // load first chunk
-    const res = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
-    if (res.success) {
-      const chunk = res.data as string;
+    if (readRes.success) {
+      const chunk = readRes.data as string;
       if (chunk.length === 0) {
         hasMoreRef.current = false;
         setHasMore(false);
@@ -272,7 +273,7 @@ export default function ServerDetailPage(): JSX.Element {
       logOffsetRef.current = bytes;
       setLoadedBytes(bytes);
     } else {
-      message.error(res.error || '读取日志文件失败');
+      message.error(readRes.error || '读取日志文件失败');
     }
   };
 
@@ -400,14 +401,25 @@ export default function ServerDetailPage(): JSX.Element {
       <Modal
         title={<span>日志列表</span>}
         closeIcon={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
             <span
               onClick={(e) => { e.stopPropagation(); setIsLogMaximized(v => !v); }}
-              style={{ cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}
+              style={{ cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 5px', display: 'inline-flex', alignItems: 'center', height: 22 }}
+              onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.06)'}
+              onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
             >
-              {isLogMaximized ? '⧉' : '⛶'}
+              {isLogMaximized ? (
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="0" y="2" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              )}
             </span>
-            <CloseOutlined style={{ fontSize: 12 }} />
+            <CloseOutlined style={{ fontSize: 11 }} />
           </span>
         }
         open={logsModalVisible}
