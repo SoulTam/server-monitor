@@ -219,9 +219,10 @@ export default function ServerDetailPage(): JSX.Element {
       const res = await window.electronAPI.logs.read(id, filePath, offset, CHUNK_SIZE);
       if (res.success) {
         const chunk = res.data as string;
-        if (chunk.length < CHUNK_SIZE) {
+        if (chunk.length === 0) {
           hasMoreRef.current = false;
           setHasMore(false);
+          return;
         }
         setLogContent(prev => prev + chunk.split('\n').map(formatJsonLine).join('\n'));
         logOffsetRef.current = offset + new TextEncoder().encode(chunk).length;
@@ -245,7 +246,7 @@ export default function ServerDetailPage(): JSX.Element {
     const res = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
     if (res.success) {
       const chunk = res.data as string;
-      if (chunk.length < CHUNK_SIZE) {
+      if (chunk.length === 0) {
         hasMoreRef.current = false;
         setHasMore(false);
       }
