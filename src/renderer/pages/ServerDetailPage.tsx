@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Space, Tag, message, Segmented, Modal, Input, List } from 'antd';
+import { Button, Space, Tag, message, Segmented, Modal, Input, List, Spin } from 'antd';
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
@@ -33,8 +33,17 @@ export default function ServerDetailPage(): JSX.Element {
   const [server, setServer] = useState<ServerWithMetrics | null>(null);
   const [logsModalVisible, setLogsModalVisible] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
-  const [logsList, setLogsList] = useState<string[]>([]);
-  const [selectedLogContent, setSelectedLogContent] = useState<string | null>(null);
+  const [logsList, setLogsList] = useState<{ fullPath: string; name: string }[]>([]);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [logContent, setLogContent] = useState('');
+  const [logOffset, setLogOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const CHUNK_SIZE = 65536;
+  const [leftWidth, setLeftWidth] = useState(320);
+  const [isDragging, setIsDragging] = useState(false);
+  const logContentRef = useRef<HTMLDivElement>(null);
+  const modalBodyRef = useRef<HTMLDivElement>(null);
   const [configPathInput, setConfigPathInput] = useState('');
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [historyData, setHistoryData] = useState<Record<MetricType, MetricRecord[]>>({
@@ -173,8 +182,15 @@ export default function ServerDetailPage(): JSX.Element {
     try {
       const res = await window.electronAPI.logs.list(id);
       if (res.success && Array.isArray(res.data)) {
-        setLogsList(res.data as string[]);
+        const items = (res.data as string[])
+          .map(fp => ({ fullPath: fp, name: fp.replace(/\\/g, '/').split('/').pop() || fp }))
+          .sort((a, b) => b.name.localeCompare(a.name));
+        setLogsList(items);
         setLogsModalVisible(true);
+        setLogContent('');
+        setSelectedFilePath(null);
+        setLogOffset(0);
+        setHasMore(true);
       } else {
         message.error(res.error || '无法列出日志');
       }
@@ -183,22 +199,75 @@ export default function ServerDetailPage(): JSX.Element {
     }
   };
 
-  const handleReadLog = async (filePath: string): Promise<void> => {
+  const loadChunk = useCallback(async (filePath: string, offset: number): Promise<void> => {
     if (!id) return;
-    const res = await window.electronAPI.logs.read(id, filePath);
-    if (res.success) {
-      const txt = res.data as string;
-      // try parse JSON
-      try {
-        const obj = JSON.parse(txt);
-        setSelectedLogContent(JSON.stringify(obj, null, 2));
-      } catch {
-        setSelectedLogContent(txt);
+    setLoading(true);
+    try {
+      const res = await window.electronAPI.logs.read(id, filePath, offset, CHUNK_SIZE);
+      if (res.success) {
+        const chunk = res.data as string;
+        if (chunk.length < CHUNK_SIZE) setHasMore(false);
+        setLogContent(prev => prev + chunk);
+        setLogOffset(prev => prev + new TextEncoder().encode(chunk).length);
+      } else {
+        message.error(res.error || '读取日志文件失败');
       }
+    } catch (e) {
+      message.error('读取日志文件失败');
+    }
+    setLoading(false);
+  }, [id]);
+
+  const handleReadLog = async (filePath: string): Promise<void> => {
+    setSelectedFilePath(filePath);
+    setLogContent('');
+    setLogOffset(0);
+    setHasMore(true);
+    const res = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
+    if (res.success) {
+      const chunk = res.data as string;
+      if (chunk.length < CHUNK_SIZE) setHasMore(false);
+      // try parse JSON for first chunk
+      try {
+        const obj = JSON.parse(chunk);
+        setLogContent(JSON.stringify(obj, null, 2));
+        setHasMore(false);
+      } catch {
+        setLogContent(chunk);
+      }
+      setLogOffset(new TextEncoder().encode(chunk).length);
     } else {
       message.error(res.error || '读取日志文件失败');
     }
   };
+
+  const handleContentScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMore && !loading && selectedFilePath) {
+      loadChunk(selectedFilePath, logOffset);
+    }
+  };
+
+  const handleDividerMouseDown = (): void => {
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent): void => {
+      if (!modalBodyRef.current) return;
+      const rect = modalBodyRef.current.getBoundingClientRect();
+      const newWidth = Math.max(200, Math.min(e.clientX - rect.left, rect.width - 300));
+      setLeftWidth(newWidth);
+    };
+    const handleMouseUp = (): void => setIsDragging(false);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   if (!server) return <div>加载中...</div>;
 
@@ -286,17 +355,51 @@ export default function ServerDetailPage(): JSX.Element {
         onCancel={() => setLogsModalVisible(false)}
         footer={null}
         width={800}
+        style={{ userSelect: isDragging ? 'none' : undefined }}
       >
-        <div style={{ display: 'flex', gap: 12 }}>
-          <List
-            style={{ width: 320, maxHeight: 500, overflow: 'auto' }}
-            dataSource={logsList}
-            renderItem={(item) => (
-              <List.Item onClick={() => handleReadLog(item)} style={{ cursor: 'pointer' }}>{item}</List.Item>
-            )}
+        <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: 500 }}>
+          <div style={{ width: leftWidth, overflow: 'auto', flexShrink: 0 }}>
+            <List
+              dataSource={logsList}
+              renderItem={(item) => (
+                <List.Item
+                  onClick={() => handleReadLog(item.fullPath)}
+                  style={{
+                    cursor: 'pointer',
+                    background: selectedFilePath === item.fullPath ? '#e6f4ff' : undefined,
+                  }}
+                >
+                  {item.name}
+                </List.Item>
+              )}
+            />
+          </div>
+          <div
+            style={{
+              width: 8,
+              cursor: 'col-resize',
+              background: isDragging ? '#1677ff' : '#f0f0f0',
+              flexShrink: 0,
+              transition: isDragging ? 'none' : 'background 0.2s',
+            }}
+            onMouseDown={handleDividerMouseDown}
+            onMouseEnter={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#d9d9d9'; }}
+            onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#f0f0f0'; }}
           />
-          <div style={{ flex: 1, maxHeight: 500, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12 }}>
-            {selectedLogContent || <span style={{ color: '#999' }}>选择文件以查看内容</span>}
+          <div
+            ref={logContentRef}
+            style={{ flex: 1, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, fontSize: 13, fontFamily: 'monospace' }}
+            onScroll={handleContentScroll}
+          >
+            {logContent || <span style={{ color: '#999' }}>选择文件以查看内容</span>}
+            {loading && (
+              <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>
+                <Spin size="small" /> 加载中...
+              </div>
+            )}
+            {!hasMore && logContent && (
+              <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>--- 已加载全部内容 ---</div>
+            )}
           </div>
         </div>
       </Modal>
