@@ -201,7 +201,7 @@ export default function ServerDetailPage(): JSX.Element {
       if (res.success && Array.isArray(res.data)) {
         const items = (res.data as string[])
           .map(fp => ({ fullPath: fp, name: fp.replace(/\\/g, '/').split('/').pop() || fp }))
-          .sort((a, b) => b.name.localeCompare(a.name));
+          ;
         setLogsList(items);
         setLogsModalVisible(true);
         setLogContent('');

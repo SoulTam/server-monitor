@@ -70,7 +70,7 @@ export function registerIpcHandlers(): void {
         });
       }
       // list files recursively under server.logsPath (limit depth 5)
-      const cmd = `find ${server.logsPath} -maxdepth 5 -type f -print`;
+      const cmd = `find ${server.logsPath} -maxdepth 5 -type f -printf '%T@\\t%p\\n' | sort -rn | cut -f2-`;
       const out = await sshService.executeCommand(serverId, cmd);
       const files = out.split('\n').filter(Boolean);
       return files;
