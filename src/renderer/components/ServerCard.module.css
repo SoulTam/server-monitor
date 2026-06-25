@@ -1,4 +1,5 @@
 .card {
+  height: 100%;
   border-radius: 8px;
   box-shadow: var(--shadow-card);
   cursor: pointer;
@@ -7,6 +8,11 @@
 
 .card:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.card :global(.ant-card-body) {
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -86,4 +92,5 @@
   gap: 8px;
   border-top: 1px solid #f0f0f0;
   padding-top: 8px;
+  margin-top: auto;
 }
