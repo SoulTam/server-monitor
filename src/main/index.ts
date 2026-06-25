@@ -6,6 +6,7 @@ import { trayService } from './services/TrayService';
 import { collectService } from './services/CollectService';
 import { dataCleanupJob } from './jobs/DataCleanupJob';
 import { getDatabase } from './database/index';
+import { dataService } from './database/DataService';
 
 log.initialize();
 
@@ -17,6 +18,26 @@ function getResourcePath(...segments: string[]): string {
     return path.join(process.resourcesPath, ...segments);
   }
   return path.join(app.getAppPath(), ...segments);
+}
+
+async function restoreMonitoringState(): Promise<void> {
+  try {
+    const servers = dataService.listServers();
+    const monitored = servers.filter(s => s.status === 'monitoring');
+    if (monitored.length === 0) return;
+    log.info(`Found ${monitored.length} server(s) with stale 'monitoring' status, attempting recovery`);
+    for (const server of monitored) {
+      try {
+        await collectService.startMonitoring(server.id);
+        log.info(`Auto-restored monitoring for server: ${server.name}`);
+      } catch (err) {
+        log.warn(`Failed to restore monitoring for ${server.name}: ${(err as Error).message}, resetting to idle`);
+        dataService.updateServer(server.id, { status: 'idle' });
+      }
+    }
+  } catch (err) {
+    log.error(`Failed to restore monitoring state: ${(err as Error).message}`);
+  }
 }
 
 function createWindow(): void {
@@ -58,6 +79,9 @@ app.whenReady().then(async () => {
   }
 
   registerIpcHandlers();
+
+  await restoreMonitoringState();
+
   createWindow();
 
   try {

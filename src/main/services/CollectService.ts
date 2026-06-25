@@ -81,7 +81,10 @@ export class CollectService {
     task.reconnectAttempts++;
     if (task.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
       log.error(`Reconnect failed after ${MAX_RECONNECT_ATTEMPTS} attempts for ${serverId}, stopping monitoring`);
-      this.stopMonitoring(serverId);
+      clearInterval(task.timer);
+      if (task.reconnectTimer) clearTimeout(task.reconnectTimer);
+      this.tasks.delete(serverId);
+      sshService.disconnect(serverId);
       dataService.updateServer(serverId, { status: 'error' });
       return false;
     }
@@ -119,6 +122,10 @@ export class CollectService {
         });
       }
     }
+  }
+
+  isMonitoring(serverId: string): boolean {
+    return this.tasks.has(serverId);
   }
 
   stopAllMonitoring(): void {
