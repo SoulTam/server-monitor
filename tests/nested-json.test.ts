@@ -176,3 +176,36 @@ describe('perf sanity (tokenize)', () => {
     expect(dt).toBeLessThan(30);
   });
 });
+
+describe('nested detection regression (real-world log line)', () => {
+  it('detects requestPayload as nested when log is single-line raw', () => {
+    const raw =
+      '{"level":30,"time":"2026-06-27T09:23:35.245+08:00","requestId":"41AZHkIGoV","userId":"cmo0vj8080088o9m33wl7br08","queueMode":true,"requestPayload":"{\\"prompt\\":\\"皮床电商详情场景\\",\\"mode\\":\\"image-to-image\\",\\"referenceImageUrls\\":[\\"u1\\",\\"u2\\",\\"u3\\",\\"u4\\"],\\"referencePolicy\\":\\"normalize\\"}","msg":"[generation/jobs] create request received"}';
+    const tokens = tokenizeJsonLine(raw);
+    const nested = tokens.filter((t) => t.kind === 'string-value' && t.nested === true);
+    expect(nested.length).toBe(1);
+    const inner = JSON.parse((nested[0] as { text: string }).text);
+    expect(isJsonLikeString(inner)).toBe(true);
+    const parsed = JSON.parse(inner);
+    expect(parsed.prompt).toBe('皮床电商详情场景');
+    expect(parsed.referenceImageUrls).toEqual(['u1', 'u2', 'u3', 'u4']);
+  });
+
+  it('handles \\u inside nested JSON string', () => {
+    const raw = '{"a":1,"data":"{\\"x\\":\\"\\u4e2d\\u6587\\",\\"y\\":[1,2]}","end":"x"}';
+    const tokens = tokenizeJsonLine(raw);
+    const ns = tokens.find((t) => t.kind === 'string-value' && t.nested === true);
+    expect(ns).toBeTruthy();
+    const inner = JSON.parse((ns as { text: string }).text);
+    expect(JSON.parse(inner).x).toBe('中文');
+    expect(JSON.parse(inner).y).toEqual([1, 2]);
+  });
+
+  it('partial JSON line (single-line tokenize) falls back to plain', () => {
+    // Documents that when content is already pretty-printed line-by-line,
+    // each individual line is partial JSON so per-line tokenize returns plain.
+    // The ServerDetailPage integration must NOT pre-pretty per-line.
+    const prettyLine = '  "requestPayload": "{\\"prompt\\":\\"皮床\\"}",';
+    expect(tokenizeJsonLine(prettyLine)).toEqual([{ kind: 'plain', text: prettyLine }]);
+  });
+});

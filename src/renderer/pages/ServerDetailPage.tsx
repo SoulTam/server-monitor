@@ -19,14 +19,6 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(1)}${units[i]}`;
 }
 
-function formatJsonLine(line: string): string {
-  try {
-    return JSON.stringify(JSON.parse(line), null, 2);
-  } catch {
-    return line;
-  }
-}
-
 function parseDiskDetails(details?: string): { used: number; total: number } | null {
   if (!details) return null;
   try {
@@ -242,7 +234,7 @@ export default function ServerDetailPage(): JSX.Element {
           setLoading(false);
           return;
         }
-        setLogContent(prev => prev + chunk.split('\n').map(formatJsonLine).join('\n'));
+        setLogContent(prev => prev + chunk);
         const bytes = new TextEncoder().encode(chunk).length;
         logOffsetRef.current = offset + bytes;
         setExpandedNestedKeys((prev) => (prev.size > 0 ? new Set() : prev));
@@ -273,7 +265,7 @@ export default function ServerDetailPage(): JSX.Element {
         hasMoreRef.current = false;
         setHasMore(false);
       }
-      setLogContent(chunk.split('\n').map(formatJsonLine).join('\n'));
+        setLogContent(chunk);
     } else {
       message.error(readRes.error || '读取日志文件失败');
     }
