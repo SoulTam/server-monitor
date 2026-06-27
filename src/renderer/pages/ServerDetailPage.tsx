@@ -1,12 +1,13 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Space, Tag, message, Segmented, Modal, Input, List, Spin } from 'antd';
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
+import LogLineRenderer from '../components/LogLineRenderer';
 import { useMonitorStore } from '../stores/monitorStore';
 import type { ServerWithMetrics } from '../../shared/ipc-types';
-import type { MetricType, MetricRecord, IpcResponse } from '../../shared/types';
+import type { MetricType, MetricRecord } from '../../shared/types';
 
 type TimeRange = '1h' | '6h' | '24h' | '7d';
 
@@ -46,8 +47,6 @@ export default function ServerDetailPage(): JSX.Element {
   const [logContent, setLogContent] = useState('');
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [fileSize, setFileSize] = useState(0);
-  const [loadedBytes, setLoadedBytes] = useState(0);
   const CHUNK_SIZE = 65536;
   const logOffsetRef = useRef(0);
   const hasMoreRef = useRef(true);
@@ -67,6 +66,18 @@ export default function ServerDetailPage(): JSX.Element {
     cpu: [], memory: [], disk: [], network: [],
   });
   const realtime = useMonitorStore((s) => (id ? s.realtimeByServer[id] : undefined));
+  const [expandedNestedKeys, setExpandedNestedKeys] = useState<Set<string>>(new Set());
+  const lines = useMemo<string[]>(() => (logContent ? logContent.split('\n') : []), [logContent]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setExpandedNestedKeys((prev) => (prev.size > 0 ? new Set() : prev));
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return (): void => document.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -234,7 +245,7 @@ export default function ServerDetailPage(): JSX.Element {
         setLogContent(prev => prev + chunk.split('\n').map(formatJsonLine).join('\n'));
         const bytes = new TextEncoder().encode(chunk).length;
         logOffsetRef.current = offset + bytes;
-        setLoadedBytes(prev => prev + bytes);
+        setExpandedNestedKeys((prev) => (prev.size > 0 ? new Set() : prev));
       } else {
         message.error(res.error || '读取日志文件失败');
       }
@@ -252,16 +263,10 @@ export default function ServerDetailPage(): JSX.Element {
     logOffsetRef.current = 0;
     hasMoreRef.current = true;
     setHasMore(true);
-    setFileSize(0);
-    setLoadedBytes(0);
     setSearchKeyword('');
     setDebouncedSearch('');
-    // load first chunk and fetch file size in parallel
-    const [readRes, statRes] = await Promise.all([
-      window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE),
-      window.electronAPI.logs.stat(id!, filePath).catch(() => ({ success: false } as IpcResponse<number>)),
-    ]);
-    if (statRes.success) setFileSize(statRes.data as number);
+    setExpandedNestedKeys(new Set());
+    const readRes = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
     if (readRes.success) {
       const chunk = readRes.data as string;
       if (chunk.length === 0) {
@@ -269,9 +274,6 @@ export default function ServerDetailPage(): JSX.Element {
         setHasMore(false);
       }
       setLogContent(chunk.split('\n').map(formatJsonLine).join('\n'));
-      const bytes = new TextEncoder().encode(chunk).length;
-      logOffsetRef.current = bytes;
-      setLoadedBytes(bytes);
     } else {
       message.error(readRes.error || '读取日志文件失败');
     }
@@ -287,6 +289,16 @@ export default function ServerDetailPage(): JSX.Element {
 
   const handleDividerMouseDown = (): void => {
     setIsDragging(true);
+  };
+
+  const handleNestedToggle = (lineIndex: number, keyIndex: number, next: boolean): void => {
+    const k = `${lineIndex}:${keyIndex}`;
+    setExpandedNestedKeys((prev) => {
+      const ns = new Set(prev);
+      if (next) ns.add(k);
+      else ns.delete(k);
+      return ns;
+    });
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -445,11 +457,6 @@ export default function ServerDetailPage(): JSX.Element {
         <div style={{ padding: '0 0 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
           <Space size="small">
             <Button type="link" size="small" style={{ padding: 0 }} onClick={handleOpenConfig}>修改路径</Button>
-            {fileSize > 0 && loadedBytes > 0 && (
-              <span style={{ fontSize: 12, color: '#999' }}>
-                {Math.min(100, ((loadedBytes / fileSize) * 100)).toFixed(1)}%
-              </span>
-            )}
           </Space>
           <Input
             size="small"
@@ -495,10 +502,18 @@ export default function ServerDetailPage(): JSX.Element {
             style={{ flex: 1, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, fontSize: 13, fontFamily: 'monospace' }}
             onScroll={handleContentScroll}
           >
-            {!logContent && <span style={{ color: '#999' }}>选择文件以查看内容</span>}
-            {logContent && !debouncedSearch && logContent}
+            {!logContent && <span key="empty" style={{ color: '#999' }}>选择文件以查看内容</span>}
+            {logContent && !debouncedSearch && lines.map((line, i) => (
+              <LogLineRenderer
+                key={`l${i}`}
+                rawLine={line}
+                lineIndex={i}
+                expandedKeys={expandedNestedKeys}
+                onToggle={handleNestedToggle}
+              />
+            ))}
             {logContent && debouncedSearch && (
-              <span dangerouslySetInnerHTML={{
+              <span key="hl" dangerouslySetInnerHTML={{
                 __html: logContent
                   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                   .split(debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
