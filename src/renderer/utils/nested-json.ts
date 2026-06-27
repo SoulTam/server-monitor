@@ -242,3 +242,148 @@ function unescapeRawString(rawLit: string): string {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Pretty-printed JSON 行级 token 化（用于弹层内带行号 + 高亮的渲染）
+// ─────────────────────────────────────────────────────────────
+
+export type PrettyToken =
+  | { kind: 'key'; text: string }
+  | { kind: 'string-value'; text: string }
+  | { kind: 'number'; text: string }
+  | { kind: 'boolean'; text: string }
+  | { kind: 'null'; text: string }
+  | { kind: 'punct'; text: string }
+  | { kind: 'space'; text: string };
+
+export interface PrettyLine {
+  raw: string;
+  indent: number;
+  tokens: PrettyToken[];
+}
+
+const NUM_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/;
+
+function isNumber(ch: string): boolean {
+  return /[0-9-]/.test(ch);
+}
+
+/**
+ * 把 indent（首部空格）单独剥离，不参与 token；剩余部分递归扫描。
+ */
+export function tokenizePrettyJson(pretty: string): PrettyLine[] {
+  if (typeof pretty !== 'string' || pretty.length === 0) return [];
+  const lines = pretty.split('\n');
+  const out: PrettyLine[] = [];
+  for (const raw of lines) {
+    out.push(scanPrettyLine(raw));
+  }
+  return out;
+}
+
+function scanPrettyLine(line: string): PrettyLine {
+  let i = 0;
+  let indent = 0;
+  while (i < line.length && line[i] === ' ') {
+    indent++;
+    i++;
+  }
+  const tokens: PrettyToken[] = [];
+  while (i < line.length) {
+    const ch = line[i];
+
+    // 空白（行中间）
+    if (ch === ' ') {
+      const start = i;
+      while (i < line.length && line[i] === ' ') i++;
+      tokens.push({ kind: 'space', text: line.slice(start, i) });
+      continue;
+    }
+    if (ch === '\t') {
+      tokens.push({ kind: 'space', text: '\t' });
+      i++;
+      continue;
+    }
+
+    // punct 单字符
+    if (ch === '{' || ch === '}' || ch === '[' || ch === ']' || ch === ',' || ch === ':') {
+      tokens.push({ kind: 'punct', text: ch });
+      i++;
+      continue;
+    }
+
+    // string literal —— 可能是 key 或 string-value（key 在行内首段时由调用方按上下文识别，下方默认按 string-value）
+    if (ch === '"') {
+      const lit = readStringLiteralRaw(line, i);
+      if (lit.end > i) {
+        const isKey = looksLikeKey(line, i, lit.end);
+        tokens.push({
+          kind: isKey ? 'key' : 'string-value',
+          text: line.slice(i, lit.end),
+        });
+        i = lit.end;
+        continue;
+      }
+    }
+
+    // number / true / false / null
+    if (isNumber(ch)) {
+      const slice = line.slice(i);
+      const m = slice.match(NUM_RE);
+      if (m) {
+        tokens.push({ kind: 'number', text: m[0] });
+        i += m[0].length;
+        continue;
+      }
+    }
+    if (line.startsWith('true', i)) {
+      tokens.push({ kind: 'boolean', text: 'true' });
+      i += 4;
+      continue;
+    }
+    if (line.startsWith('false', i)) {
+      tokens.push({ kind: 'boolean', text: 'false' });
+      i += 5;
+      continue;
+    }
+    if (line.startsWith('null', i)) {
+      tokens.push({ kind: 'null', text: 'null' });
+      i += 4;
+      continue;
+    }
+
+    // fallback：吞一个字符避免循环
+    tokens.push({ kind: 'punct', text: ch });
+    i++;
+  }
+  return { raw: line, indent, tokens };
+}
+
+interface ReadResult { end: number; }
+
+function readStringLiteralRaw(line: string, start: number): ReadResult {
+  if (line[start] !== '"') return { end: start };
+  let i = start + 1;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (ch === '"') {
+      return { end: i + 1 };
+    }
+    i++;
+  }
+  return { end: start };
+}
+
+/**
+ * 判断一行扫描到 `line[start..end)` 的字符串字面值是否为 JSON key：
+ *   该字符串后面应接 `:`（中间允许空格）才认为它是 key。
+ */
+function looksLikeKey(line: string, start: number, end: number): boolean {
+  let i = end;
+  while (i < line.length && /\s/.test(line[i])) i++;
+  return i < line.length && line[i] === ':';
+}

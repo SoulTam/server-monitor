@@ -4,6 +4,8 @@ import {
   isJsonLikeString,
   prettyJsonString,
   escapeJsonForHtml,
+  tokenizePrettyJson,
+  type PrettyToken,
 } from '../utils/nested-json';
 import styles from './NestedJsonValue.module.css';
 
@@ -43,10 +45,32 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
+function tokenClass(t: PrettyToken): string {
+  switch (t.kind) {
+    case 'key':
+      return styles.tokenKey ?? '';
+    case 'string-value':
+      return styles.tokenString ?? '';
+    case 'number':
+      return styles.tokenNumber ?? '';
+    case 'boolean':
+      return styles.tokenBoolean ?? '';
+    case 'null':
+      return styles.tokenNull ?? '';
+    case 'punct':
+      return styles.tokenPunct ?? '';
+    case 'space':
+      return styles.tokenSpace ?? '';
+    default:
+      return '';
+  }
+}
+
 export default function NestedJsonValue(props: NestedJsonValueProps): JSX.Element {
   const { rawValue, keyName, expanded, onToggle } = props;
   const detected = useMemo(() => isJsonLikeString(rawValue), [rawValue]);
   const pretty = useMemo(() => prettyJsonString(rawValue), [rawValue]);
+  const prettyLines = useMemo(() => (pretty ? tokenizePrettyJson(pretty) : []), [pretty]);
   const charCount = useMemo(() => {
     if (!detected) return rawValue.length;
     try {
@@ -96,6 +120,34 @@ export default function NestedJsonValue(props: NestedJsonValueProps): JSX.Elemen
     );
   }
 
+  const renderPrettyBody = (): JSX.Element => {
+    if (pretty === null) {
+      return <span className={styles.parseError}>内层 JSON 解析失败</span>;
+    }
+    if (prettyLines.length === 0) {
+      return <span>{pretty}</span>;
+    }
+    return (
+      <ol className={styles.lineList} role="list">
+        {prettyLines.map((ln, i) => (
+          <li key={`row${i}`} className={styles.lineRow}>
+            <span className={styles.gutter} aria-hidden="true">
+              {i + 1}
+            </span>
+            <span className={styles.lineBody}>
+              {' '.repeat(ln.indent)}
+              {ln.tokens.map((t, ti) => (
+                <span key={`tok${ti}`} className={tokenClass(t)}>
+                  {t.text}
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ol>
+    );
+  };
+
   return (
     <span role="region" className={styles.popupWrap} aria-label={`嵌套 JSON 预览 ${keyName}`}>
       <div className={styles.toolbar}>
@@ -124,9 +176,7 @@ export default function NestedJsonValue(props: NestedJsonValueProps): JSX.Elemen
           复制 pretty
         </Button>
       </div>
-      <pre className={styles.pretty}>
-        <code>{pretty ?? '内层 JSON 解析失败'}</code>
-      </pre>
+      <pre className={styles.pretty}>{renderPrettyBody()}</pre>
     </span>
   );
 }

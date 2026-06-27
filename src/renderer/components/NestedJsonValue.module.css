@@ -64,3 +64,71 @@
   white-space: pre;
   color: #333;
 }
+
+.lineList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.lineRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+}
+
+.gutter {
+  display: inline-block;
+  min-width: 28px;
+  padding-right: 6px;
+  text-align: right;
+  background: #fafafa;
+  border-right: 1px solid #eee;
+  color: #bbb;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineBody {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tokenKey {
+  color: #1677ff;
+}
+
+.tokenString {
+  color: #d4380d;
+}
+
+.tokenNumber {
+  color: #722ed1;
+}
+
+.tokenBoolean {
+  color: #faad14;
+}
+
+.tokenNull {
+  color: #999999;
+  font-style: italic;
+}
+
+.tokenPunct {
+  color: #555555;
+}
+
+.tokenSpace {
+  white-space: pre;
+}
+
+.parseError {
+  color: #cf1322;
+}

@@ -4,6 +4,7 @@ import {
   prettyJsonString,
   tokenizeJsonLine,
   escapeJsonForHtml,
+  tokenizePrettyJson,
   type JsonToken,
 } from '../src/renderer/utils/nested-json';
 
@@ -207,5 +208,87 @@ describe('nested detection regression (real-world log line)', () => {
     // The ServerDetailPage integration must NOT pre-pretty per-line.
     const prettyLine = '  "requestPayload": "{\\"prompt\\":\\"皮床\\"}",';
     expect(tokenizeJsonLine(prettyLine)).toEqual([{ kind: 'plain', text: prettyLine }]);
+  });
+});
+
+describe('tokenizePrettyJson (弹层行级高亮)', () => {
+  it('simple object — preserves roundtrip and emits key/number/string/punct', () => {
+    const pretty = JSON.stringify({ a: 1, b: 'x' }, null, 2);
+    const lines = tokenizePrettyJson(pretty);
+    expect(lines.length).toBe(4);
+    const kindsAll = lines.flatMap((l) => l.tokens.map((t) => t.kind));
+    expect(kindsAll).toContain('key');
+    expect(kindsAll).toContain('number');
+    expect(kindsAll).toContain('string-value');
+    expect(kindsAll).toContain('punct');
+    // roundtrip: each token text concatenates back to raw (after re-applying indent)
+    for (const line of lines) {
+      const joined = ' '.repeat(line.indent) + line.tokens.map((t) => t.text).join('');
+      expect(joined).toBe(line.raw);
+    }
+  });
+
+  it('array [1, null, true] — number/null/boolean all detected', () => {
+    const pretty = JSON.stringify([1, null, true], null, 2);
+    const lines = tokenizePrettyJson(pretty);
+    const kinds = lines.flatMap((l) => l.tokens.map((t) => t.kind));
+    expect(kinds).toContain('number');
+    expect(kinds).toContain('null');
+    expect(kinds).toContain('boolean');
+  });
+
+  it('indent count is correct for nested levels', () => {
+    const pretty = JSON.stringify({ outer: { inner: 1 } }, null, 2);
+    const lines = tokenizePrettyJson(pretty);
+    expect(lines[0].indent).toBe(0);                // {
+    expect(lines[1].indent).toBe(2);                //   "outer": {
+    expect(lines[2].indent).toBe(4);                //     "inner": 1
+  });
+
+  it('empty input → empty output, single-line { } → both lines', () => {
+    expect(tokenizePrettyJson('')).toEqual([]);
+    const lines = tokenizePrettyJson('{}');
+    expect(lines.length).toBe(1);
+    // TextContent join has space-padded { } wrap around
+    expect(lines[0].raw).toBe('{}');
+  });
+
+  it('multi-keys line: string literal followed by colon is recognized as key', () => {
+    const pretty = JSON.stringify({ 'a-key': 'value', 'noColon': 'value2' }, null, 2);
+    const lines = tokenizePrettyJson(pretty);
+    const keysTokens = lines
+      .flatMap((l) => l.tokens)
+      .filter((t) => t.kind === 'key')
+      .map((t) => t.text);
+    expect(keysTokens.length).toBe(2);
+    expect(keysTokens[0]).toBe('"a-key"');
+    expect(keysTokens[1]).toBe('"noColon"');
+  });
+
+  it('real-world nested payload from user log', () => {
+    const inner = {
+      prompt: '皮床电商详情场景',
+      mode: 'image-to-image',
+      model: '45',
+      referenceImageUrls: [
+        'https://huabu-art.oss-cn-hangzhou.aliyuncs.com/creative_project/20260626/cmqu9ygva00eqgqm3vre28qfz/6be026d1-df30-4d49-8c6e-b1b2d135f6a1.png',
+        'https://huabu-art.oss-cn-hangzhou.aliyuncs.com/creative_project/20260626/cmqu9ygva00eqgqm3vre28qfz/40fe3f2e-409c-4be9-b208-0ac2e3aebb18.png',
+        'https://huabu-art.oss-cn-hangzhou.aliyuncs.com/creative_project/20260626/cmqu9ygva00eqgqm3vre28qfz/660d8595-8f00-4390-b4fc-4ff83511dae1.png',
+        'https://huabu-art.oss-cn-hangzhou.aliyuncs.com/creative_project/20260626/cmqu9ygva00eqgqm3vre28qfz/c43766f3-764c-4ecc-af8f-c7745923660a.png',
+      ],
+      referencePolicy: 'normalize',
+    };
+    const pretty = prettyJsonString(JSON.stringify(inner));
+    const lines = tokenizePrettyJson(pretty ?? '');
+    // roundtrip
+    for (const line of lines) {
+      const joined = ' '.repeat(line.indent) + line.tokens.map((t) => t.text).join('');
+      expect(joined).toBe(line.raw);
+    }
+    expect(lines.length).toBeGreaterThan(5);
+    const stringCount = lines
+      .flatMap((l) => l.tokens)
+      .filter((t) => t.kind === 'string-value').length;
+    expect(stringCount).toBeGreaterThanOrEqual(5);
   });
 });
