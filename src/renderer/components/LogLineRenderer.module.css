@@ -30,6 +30,19 @@
   color: inherit;
 }
 
+.jsonNumber {
+  color: #722ed1;
+}
+
+.jsonBoolean {
+  color: #faad14;
+}
+
+.jsonNull {
+  color: #999;
+  font-style: italic;
+}
+
 .mark {
   background: #ffd54f;
   padding: 0 1px;

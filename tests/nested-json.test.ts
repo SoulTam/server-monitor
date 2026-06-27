@@ -211,6 +211,57 @@ describe('nested detection regression (real-world log line)', () => {
   });
 });
 
+describe('pretty-print + nested detection integration', () => {
+  it('detects nested JSON in pretty-printed outer object via unescaped string-value token', () => {
+    const raw =
+      '{"level":30,"time":"2026-06-27T09:23:35.245+08:00","requestId":"41AZHkIGoV","requestPayload":"{\\"prompt\\":\\"皮床\\",\\"mode\\":\\"image-to-image\\"}","msg":"hello"}';
+    const parsed = JSON.parse(raw);
+    const pretty = JSON.stringify(parsed, null, 2);
+    const lines = tokenizePrettyJson(pretty);
+
+    // Find the line containing 'requestPayload'
+    const reqLine = lines.find((l) => l.raw.includes('requestPayload'));
+    expect(reqLine).toBeTruthy();
+
+    // The string-value token on that line should be the nested JSON
+    const svToken = reqLine!.tokens.find((t) => t.kind === 'string-value');
+    expect(svToken).toBeTruthy();
+
+    // Check roundtrip
+    const joined = ' '.repeat(reqLine!.indent) + reqLine!.tokens.map((t) => t.text).join('');
+    expect(joined).toBe(reqLine!.raw);
+
+    // Unescaped value should be JSON-like
+    const unescaped = JSON.parse(svToken!.text);
+    expect(isJsonLikeString(unescaped)).toBe(true);
+
+    const inner = JSON.parse(unescaped);
+    expect(inner.prompt).toBe('皮床');
+    expect(inner.mode).toBe('image-to-image');
+  });
+
+  it('handles rawRequestPayload key: pretty-print + tokenizePrettyJson works', () => {
+    const raw =
+      '{"level":30,"rawRequestPayload":"{\\"level\\":30,\\"data\\":{\\"x\\":1}}","msg":"finished"}';
+    const parsed = JSON.parse(raw);
+    const pretty = JSON.stringify(parsed, null, 2);
+    const lines = tokenizePrettyJson(pretty);
+
+    const reqLine = lines.find((l) => l.raw.includes('rawRequestPayload'));
+    expect(reqLine).toBeTruthy();
+
+    const svToken = reqLine!.tokens.find((t) => t.kind === 'string-value');
+    expect(svToken).toBeTruthy();
+
+    const unescaped = JSON.parse(svToken!.text);
+    expect(isJsonLikeString(unescaped)).toBe(true);
+
+    const inner = JSON.parse(unescaped);
+    expect(inner.level).toBe(30);
+    expect(inner.data.x).toBe(1);
+  });
+});
+
 describe('tokenizePrettyJson (弹层行级高亮)', () => {
   it('simple object — preserves roundtrip and emits key/number/string/punct', () => {
     const pretty = JSON.stringify({ a: 1, b: 'x' }, null, 2);

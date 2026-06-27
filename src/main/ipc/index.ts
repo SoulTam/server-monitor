@@ -70,7 +70,7 @@ export function registerIpcHandlers(): void {
         });
       }
       // list files recursively under server.logsPath (limit depth 5)
-      const cmd = `find ${server.logsPath} -maxdepth 5 -type f -printf '%T@\\t%p\\n' | sort -rn | cut -f2-`;
+      const cmd = `find ${server.logsPath} -maxdepth 5 -type f -print`;
       const out = await sshService.executeCommand(serverId, cmd);
       const files = out.split('\n').filter(Boolean);
       return files;
@@ -99,41 +99,14 @@ export function registerIpcHandlers(): void {
       // Use dd to read a range if length provided, else cat
       let cmd: string;
       if (length && length > 0) {
-        const blockSize = 65536;
-        const blockSkip = Math.floor(offset / blockSize);
-        const blockCount = Math.ceil(length / blockSize);
-        cmd = `dd if='${filePath}' bs=${blockSize} skip=${blockSkip} count=${blockCount} 2>/dev/null | base64`;
+        cmd = `dd if=${filePath} bs=1 skip=${offset} count=${length} 2>/dev/null | base64`;
         const b64 = await sshService.executeCommand(serverId, cmd);
         const buf = Buffer.from(b64.trim(), 'base64');
         return buf.toString('utf8');
       }
-      cmd = `cat '${filePath}'`;
+      cmd = `cat ${filePath}`;
       const out = await sshService.executeCommand(serverId, cmd);
       return out;
-    }),
-  );
-
-  ipcMain.handle(IPC_CHANNELS.LOG_STAT, (_e, payload: { serverId: string; filePath: string }) =>
-    wrap(async () => {
-      const { serverId, filePath } = payload;
-      const server = serverConfigService.getServer(serverId);
-      if (!server) throw new Error('SERVER_NOT_FOUND');
-      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
-      if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
-      if (!sshService.isConnected(serverId)) {
-        await sshService.connect(serverId, {
-          host: server.ip,
-          port: server.port,
-          username: server.username,
-          authType: server.authType,
-          password: server.password,
-          privateKeyPath: server.privateKeyPath,
-          privateKeyPassphrase: server.privateKeyPassphrase,
-        });
-      }
-      const cmd = `wc -c < '${filePath}' 2>/dev/null || echo 0`;
-      const out = await sshService.executeCommand(serverId, cmd);
-      return parseInt(out.trim(), 10);
     }),
   );
 

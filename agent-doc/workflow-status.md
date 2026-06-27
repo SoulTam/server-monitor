@@ -1,21 +1,15 @@
 <!-- 创建时间: 2026-06-27 09:40 -->
-<!-- 最后修改: 2026-06-27 16:55 -->
+<!-- 最后修改: 2026-06-28 00:24 -->
 
 # Workflow Status
 
-当前阶段: 已完成
+当前阶段: 已完成（外缩进 + 修复）
 
-上一步: 终态校验通过 (`agent-doc/result-first/2026-06-27-02-verification-final-report.md`)；合规稽查通过 (`agent-doc/audit/2026-06-27-sub-plan-execution-audit-report.md`)；3 个子计划完成。
+上一步: 修复外层 JSON 无缩进问题（原一行 JSON 未 pretty-print）；同时修复任意 key（如 rawRequestPayload）的 JSON 字符串值未被检测的问题。方案：LogLineRenderer 先 JSON.parse → 漂亮打印 → tokenizePrettyJson 行级渲染，同时预遍历 parsed object 标记含 JSON 字符串的 key，再在对应行替换为 NestedJsonValue。
 
-下一步: 用户在新需求出现前无需进一步动作；建议在桌面环境运行 `npm run dev:electron` 打开日志浏览 Modal 验证 SP-03 各类交互（折叠 / 展开 / 复制 raw+pretty / Esc 收起）。
+下一步: 用户运行 `npm run dev:electron`，打开日志 Modal 验证：外层 JSON 缩进 2 格 + 语法高亮 + 数字/布尔/null 分别用色 + 嵌套 JSON 展开/折叠/复制。
 
-说明: 本次需求为"日志中嵌套 JSON 字符串展示"，方案 D（就地替换 + 折叠 + 可复制）。完整交付清单：
-- 结果蓝图：`agent-doc/result-first/2026-06-27-02-nested-json-display-result-blueprint.md`
-- 终态校验：`agent-doc/result-first/2026-06-27-02-verification-final-report.md`
-- 设计：architecture / technical-design / feature-design / dev-plan 4 个 md
-- 子计划 + 进度 + 覆盖率 + 逐行核查：`agent-doc/plan/2026-06-27/`
-- 稽查：`agent-doc/audit/2026-06-27-sub-plan-execution-audit-report.md`
-- 代码 commits：
-  - `7bbcb08` feat(renderer): add nested-json utils
-  - `a332c03` feat(renderer): add NestedJsonValue and LogLineRenderer
-  - `f2824bc` feat(renderer): wire nested-json preview into ServerDetailPage
+说明: 
+- 改动：`LogLineRenderer.tsx` 重构（新增 `renderPrettyObject` 函数 + 保留 `renderTokenizedLine` 回退），`LogLineRenderer.module.css` 新增 `.jsonNumber`/`.jsonBoolean`/`.jsonNull` 样式
+- 测试：36/36 通过（新增 2 条集成测试验证 pretty-print + nested detection）
+- tsc/eslint/build:renderer 全通过

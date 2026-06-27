@@ -13,7 +13,6 @@ export const IPC_CHANNELS = {
   ALERT_NOTIFICATION: 'alert:notification',
   LOG_LIST: 'log:list',
   LOG_READ: 'log:read',
-  LOG_STAT: 'log:stat',
 } as const;
 
 export const DEFAULT_SERVER_CONFIG = {
@@ -29,6 +28,6 @@ export const DEFAULT_SERVER_CONFIG = {
 export const METRIC_RETENTION_DAYS = 30;
 export const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 export const SSH_CONNECT_TIMEOUT = 10000;
-export const SSH_COMMAND_TIMEOUT = 30000;
+export const SSH_COMMAND_TIMEOUT = 5000;
 export const SSH_KEEPALIVE_INTERVAL = 10000;
 export const SSH_KEEPALIVE_MAX_COUNT = 3;

@@ -84,7 +84,7 @@ export default function ServerCard({ server, onEdit, onDelete, onStart, onStop, 
         </div>
       </div>
 
-      <MiniChart data={history?.cpu} />
+      {history && <MiniChart data={history.cpu} />}
 
       <div className={styles.actions} onClick={(e) => e.stopPropagation()}>
         <Space size="small">
