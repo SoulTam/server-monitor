@@ -1,9 +1,11 @@
 import { Fragment } from 'react';
+import { Popover, Button, message } from 'antd';
 import {
   tokenizeJsonLine,
   tokenizePrettyJson,
   escapeJsonForHtml,
   isJsonLikeString,
+  prettyJsonString,
 } from '../utils/nested-json';
 import NestedJsonValue from './NestedJsonValue';
 import styles from './LogLineRenderer.module.css';
@@ -56,33 +58,63 @@ function highlight(text: string, keyword: string): JSX.Element[] {
   return out;
 }
 
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success('复制成功');
+  } catch {
+    message.error('复制失败');
+  }
+}
+
+function renderPopoverContent(rawValue: string): JSX.Element {
+  const pretty = prettyJsonString(rawValue) ?? rawValue;
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginBottom: 4 }}>
+        <Button
+          size="small"
+          type="link"
+          onClick={(e) => { e.stopPropagation(); copyText(rawValue); }}
+        >
+          复制 raw
+        </Button>
+        <Button
+          size="small"
+          type="link"
+          onClick={(e) => { e.stopPropagation(); copyText(pretty); }}
+        >
+          复制 pretty
+        </Button>
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          fontSize: 12,
+          lineHeight: 1.5,
+          whiteSpace: 'pre',
+          fontFamily: 'monospace',
+          maxHeight: 360,
+          overflow: 'auto',
+        }}
+      >
+        {pretty}
+      </pre>
+    </div>
+  );
+}
+
 function renderPrettyObject(
   parsed: Record<string, unknown> | unknown[],
   lineIndex: number,
   kw: string | undefined,
-  expandedKeys: Set<string>,
-  onToggle: (lineIndex: number, keyIndex: number, next: boolean) => void,
+  _expandedKeys: Set<string>,
+  _onToggle: (lineIndex: number, keyIndex: number, next: boolean) => void,
 ): JSX.Element {
-  const nestedMap = new Map<string, number>();
-  let keyIdx = 0;
-
-  if (Array.isArray(parsed)) {
-    parsed.forEach((value, idx) => {
-      if (typeof value === 'string' && isJsonLikeString(value)) {
-        nestedMap.set(String(idx), keyIdx++);
-      }
-    });
-  } else {
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'string' && isJsonLikeString(value)) {
-        nestedMap.set(key, keyIdx++);
-      }
-    }
-  }
-
   const pretty = JSON.stringify(parsed, null, 2);
   const prettyLines = tokenizePrettyJson(pretty);
   const elements: JSX.Element[] = [];
+  const obj = parsed as Record<string, unknown>;
 
   prettyLines.forEach((pl, lineIdx) => {
     let currentKey: string | null = null;
@@ -91,35 +123,39 @@ function renderPrettyObject(
       const elKey = elements.length;
       if (tok.kind === 'key') {
         currentKey = unescapeLiteral(tok.text);
-        elements.push(
-          <span key={elKey} className={styles.jsonKey}>
-            {kw ? highlight(tok.text, kw) : tok.text}
-          </span>,
-        );
-      } else if (tok.kind === 'string-value') {
-        const unescaped = unescapeLiteral(tok.text);
-        const ki = currentKey !== null ? nestedMap.get(currentKey) : undefined;
-        const isNested = ki !== undefined && isJsonLikeString(unescaped);
+        const value = currentKey !== null ? obj[currentKey] : undefined;
+        const isNested = typeof value === 'string' && isJsonLikeString(value);
 
         if (isNested) {
           elements.push(
-            <NestedJsonValue
+            <Popover
               key={elKey}
-              rawValue={unescaped}
-              keyName={tok.text.slice(0, 32)}
-              lineIndex={lineIndex}
-              keyIndex={ki}
-              expanded={expandedKeys.has(`${lineIndex}:${ki}`)}
-              onToggle={(next) => onToggle(lineIndex, ki, next)}
-            />,
+              content={renderPopoverContent(value as string)}
+              trigger="hover"
+              placement="right"
+              mouseEnterDelay={0.3}
+              mouseLeaveDelay={0.1}
+              destroyTooltipOnHide
+              overlayInnerStyle={{ padding: '6px 10px' }}
+            >
+              <span className={styles.jsonKeyHover}>
+                {kw ? highlight(tok.text, kw) : tok.text}
+              </span>
+            </Popover>,
           );
         } else {
           elements.push(
-            <span key={elKey} className={styles.jsonString}>
-              {kw ? highlight(escapeJsonForHtml(tok.text), kw) : tok.text}
+            <span key={elKey} className={styles.jsonKey}>
+              {kw ? highlight(tok.text, kw) : tok.text}
             </span>,
           );
         }
+      } else if (tok.kind === 'string-value') {
+        elements.push(
+          <span key={elKey} className={styles.jsonString}>
+            {kw ? highlight(escapeJsonForHtml(tok.text), kw) : tok.text}
+          </span>,
+        );
       } else if (tok.kind === 'number') {
         elements.push(
           <span key={elKey} className={styles.jsonNumber}>

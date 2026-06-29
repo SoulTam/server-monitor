@@ -13,6 +13,12 @@
   color: #1677ff;
 }
 
+.jsonKeyHover {
+  color: #1677ff;
+  cursor: pointer;
+  border-bottom: 1px dashed #1677ff;
+}
+
 .jsonPunct {
   color: #555;
 }
