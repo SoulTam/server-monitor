@@ -5,7 +5,6 @@ import {
   tokenizePrettyJson,
   escapeJsonForHtml,
   isJsonLikeString,
-  prettyJsonString,
 } from '../utils/nested-json';
 import NestedJsonValue from './NestedJsonValue';
 import styles from './LogLineRenderer.module.css';
@@ -67,8 +66,16 @@ async function copyText(text: string): Promise<void> {
   }
 }
 
+function prettyFormat(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 4);
+  } catch {
+    return raw;
+  }
+}
+
 function renderPopoverContent(rawValue: string): JSX.Element {
-  const pretty = prettyJsonString(rawValue) ?? rawValue;
+  const pretty = prettyFormat(rawValue);
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginBottom: 4 }}>
@@ -104,20 +111,74 @@ function renderPopoverContent(rawValue: string): JSX.Element {
   );
 }
 
+interface JsonExtract {
+  prefix: string;
+  json: string;
+  suffix: string;
+  parsed: Record<string, unknown> | unknown[];
+}
+
+function extractFirstJson(line: string): JsonExtract | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const start = trimmed.search(/[{[]/);
+  if (start < 0) return null;
+  const prefix = trimmed.slice(0, start);
+  const openCh = trimmed[start];
+  const closeCh = openCh === '{' ? '}' : ']';
+  let depth = 0;
+  let inStr = false;
+  let inEsc = false;
+  let end = start;
+  for (let i = start; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (inEsc) { inEsc = false; continue; }
+    if (ch === '\\' && inStr) { inEsc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === openCh) depth++;
+    if (ch === closeCh) {
+      depth--;
+      if (depth === 0) { end = i + 1; break; }
+    }
+  }
+  if (depth !== 0) return null;
+  const json = trimmed.slice(start, end);
+  const suffix = trimmed.slice(end);
+  let parsed: unknown;
+  try { parsed = JSON.parse(json); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object') return null;
+  return { prefix, json, suffix, parsed: parsed as Record<string, unknown> | unknown[] };
+}
+
 function renderPrettyObject(
   parsed: Record<string, unknown> | unknown[],
+  prefix: string,
+  suffix: string,
   lineIndex: number,
   kw: string | undefined,
   _expandedKeys: Set<string>,
   _onToggle: (lineIndex: number, keyIndex: number, next: boolean) => void,
 ): JSX.Element {
-  const pretty = JSON.stringify(parsed, null, 2);
+  const pretty = JSON.stringify(parsed, null, 4);
   const prettyLines = tokenizePrettyJson(pretty);
   const elements: JSX.Element[] = [];
   const obj = parsed as Record<string, unknown>;
 
+  if (prefix) {
+    elements.push(
+      <span key={elements.length} className={styles.jsonPlain}>
+        {kw ? highlight(escapeJsonForHtml(prefix), kw) : prefix}
+      </span>,
+    );
+  }
+
   prettyLines.forEach((pl, lineIdx) => {
     let currentKey: string | null = null;
+
+    if (pl.indent > 0) {
+      elements.push(<span key={elements.length}>{' '.repeat(pl.indent)}</span>);
+    }
 
     pl.tokens.forEach((tok) => {
       const elKey = elements.length;
@@ -136,7 +197,7 @@ function renderPrettyObject(
               mouseEnterDelay={0.3}
               mouseLeaveDelay={0.1}
               destroyTooltipOnHide
-              overlayInnerStyle={{ padding: '6px 10px' }}
+              overlayInnerStyle={{ padding: '6px 10px', maxWidth: 480 }}
             >
               <span className={styles.jsonKeyHover}>
                 {kw ? highlight(tok.text, kw) : tok.text}
@@ -188,9 +249,17 @@ function renderPrettyObject(
     });
 
     if (lineIdx < prettyLines.length - 1) {
-      elements.push(<br key={`br${lineIdx}`} />);
+      elements.push(<br key={elements.length} />);
     }
   });
+
+  if (suffix) {
+    elements.push(
+      <span key={elements.length} className={styles.jsonPlain}>
+        {kw ? highlight(escapeJsonForHtml(suffix), kw) : suffix}
+      </span>,
+    );
+  }
 
   return <div className={styles.line}>{elements}</div>;
 }
@@ -287,16 +356,17 @@ export default function LogLineRenderer(props: LogLineRendererProps): JSX.Elemen
     );
   }
 
-  const trimmed = rawLine.trim();
-  if (trimmed.length > 0 && (trimmed[0] === '{' || trimmed[0] === '[')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === 'object') {
-        return renderPrettyObject(parsed, lineIndex, kw, expandedKeys, onToggle);
-      }
-    } catch {
-      /* fall through */
-    }
+  const jsonExtract = extractFirstJson(rawLine);
+  if (jsonExtract) {
+    return renderPrettyObject(
+      jsonExtract.parsed,
+      jsonExtract.prefix,
+      jsonExtract.suffix,
+      lineIndex,
+      kw,
+      expandedKeys,
+      onToggle,
+    );
   }
 
   return renderTokenizedLine(rawLine, lineIndex, kw, expandedKeys, onToggle);
