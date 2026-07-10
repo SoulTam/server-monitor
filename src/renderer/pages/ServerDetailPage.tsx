@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Space, Tag, message, Segmented, Modal, Input, List, Spin } from 'antd';
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
 import LogLineRenderer from '../components/LogLineRenderer';
@@ -60,6 +60,15 @@ export default function ServerDetailPage(): JSX.Element {
   const realtime = useMonitorStore((s) => (id ? s.realtimeByServer[id] : undefined));
   const [expandedNestedKeys, setExpandedNestedKeys] = useState<Set<string>>(new Set());
   const lines = useMemo<string[]>(() => (logContent ? logContent.split('\n') : []), [logContent]);
+  const matchPositions = useMemo<number[]>(() => {
+    if (!debouncedSearch || lines.length === 0) return [];
+    return lines.reduce<number[]>((acc, line, idx) => {
+      if (line.includes(debouncedSearch)) acc.push(idx);
+      return acc;
+    }, []);
+  }, [debouncedSearch, lines]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+  const autoPositionRef = useRef(true);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -257,6 +266,8 @@ export default function ServerDetailPage(): JSX.Element {
     setHasMore(true);
     setSearchKeyword('');
     setDebouncedSearch('');
+    setCurrentMatchIndex(-1);
+    autoPositionRef.current = true;
     setExpandedNestedKeys(new Set());
     const readRes = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
     if (readRes.success) {
@@ -277,6 +288,59 @@ export default function ServerDetailPage(): JSX.Element {
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMoreRef.current && !loadingRef.current && selectedFilePathRef.current) {
       loadChunk(selectedFilePathRef.current, logOffsetRef.current);
     }
+  };
+
+  useEffect(() => {
+    if (!debouncedSearch || !id || !selectedFilePathRef.current) return;
+    autoPositionRef.current = true;
+    setCurrentMatchIndex(-1);
+    let active = true;
+    const loadAll = async (): Promise<void> => {
+      const filePath = selectedFilePathRef.current!;
+      while (hasMoreRef.current && active) {
+        const prevOffset = logOffsetRef.current;
+        await loadChunk(filePath, logOffsetRef.current);
+        if (logOffsetRef.current === prevOffset) break;
+      }
+    };
+    loadAll();
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, id]);
+
+  useEffect(() => {
+    if (!debouncedSearch || matchPositions.length === 0 || !autoPositionRef.current) return;
+    autoPositionRef.current = false;
+    setCurrentMatchIndex(matchPositions.length - 1);
+  }, [debouncedSearch, matchPositions.length]);
+
+  useEffect(() => {
+    if (currentMatchIndex < 0 || matchPositions.length === 0) return;
+    const lineIndex = matchPositions[currentMatchIndex];
+    const el = logContentRef.current;
+    if (!el) return;
+    const target = el.querySelector(`[data-line-index="${lineIndex}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentMatchIndex, matchPositions]);
+
+  const goToPrevMatch = (): void => {
+    autoPositionRef.current = false;
+    setCurrentMatchIndex((prev) => {
+      if (matchPositions.length === 0) return -1;
+      if (prev <= 0) return matchPositions.length - 1;
+      return prev - 1;
+    });
+  };
+
+  const goToNextMatch = (): void => {
+    autoPositionRef.current = false;
+    setCurrentMatchIndex((prev) => {
+      if (matchPositions.length === 0) return -1;
+      if (prev >= matchPositions.length - 1) return 0;
+      return prev + 1;
+    });
   };
 
   const handleDividerMouseDown = (): void => {
@@ -453,12 +517,21 @@ export default function ServerDetailPage(): JSX.Element {
           <Input
             size="small"
             placeholder="搜索..."
-            prefix={searchKeyword ? <span style={{ fontSize: 12, color: '#999' }}>{matchCount}</span> : undefined}
+            prefix={searchKeyword ? <span style={{ fontSize: 12, color: '#999' }}>{matchCount}条</span> : undefined}
             value={searchKeyword}
             onChange={handleSearchChange}
             style={{ width: 200, marginLeft: 'auto' }}
             allowClear
           />
+          {debouncedSearch && matchPositions.length > 0 && (
+            <Space size={0}>
+              <span style={{ fontSize: 12, color: '#999', marginRight: 2, whiteSpace: 'nowrap' }}>
+                {currentMatchIndex >= 0 ? `${currentMatchIndex + 1}/${matchPositions.length}` : `?/${matchPositions.length}`}
+              </span>
+              <Button type="text" size="small" icon={<ArrowUpOutlined />} onClick={goToPrevMatch} />
+              <Button type="text" size="small" icon={<ArrowDownOutlined />} onClick={goToNextMatch} />
+            </Space>
+          )}
         </div>
         <div ref={modalBodyRef} style={{ display: 'flex', gap: 0, height: isLogMaximized ? 'calc(100vh - 170px)' : 480 }}>
           <div style={{ width: leftWidth, overflow: 'auto', flexShrink: 0 }}>
@@ -495,23 +568,24 @@ export default function ServerDetailPage(): JSX.Element {
             onScroll={handleContentScroll}
           >
             {!logContent && <span key="empty" style={{ color: '#999' }}>选择文件以查看内容</span>}
-            {logContent && !debouncedSearch && lines.map((line, i) => (
-              <LogLineRenderer
-                key={`l${i}`}
-                rawLine={line}
-                lineIndex={i}
-                expandedKeys={expandedNestedKeys}
-                onToggle={handleNestedToggle}
-              />
-            ))}
-            {logContent && debouncedSearch && (
-              <span key="hl" dangerouslySetInnerHTML={{
-                __html: logContent
-                  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  .split(debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-                  .join(`<mark style="background:#ffd54f;padding:0 1px">${debouncedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</mark>`)
-              }} />
-            )}
+            {logContent && lines.map((line, i) => {
+              const isActive = currentMatchIndex >= 0 && matchPositions[currentMatchIndex] === i;
+              return (
+                <div
+                  key={`l${i}`}
+                  data-line-index={i}
+                  style={isActive ? { background: '#fff8e1', outline: '2px solid #ff9800', outlineOffset: -1, borderRadius: 2 } : undefined}
+                >
+                  <LogLineRenderer
+                    rawLine={line}
+                    lineIndex={i}
+                    highlight={debouncedSearch || undefined}
+                    expandedKeys={expandedNestedKeys}
+                    onToggle={handleNestedToggle}
+                  />
+                </div>
+              );
+            })}
             {loading && (
               <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>
                 <Spin size="small" /> 加载中...

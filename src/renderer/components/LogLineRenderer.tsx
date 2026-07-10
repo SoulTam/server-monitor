@@ -3,7 +3,6 @@ import { Popover, Button, message } from 'antd';
 import {
   tokenizeJsonLine,
   tokenizePrettyJson,
-  escapeJsonForHtml,
   isJsonLikeString,
 } from '../utils/nested-json';
 import NestedJsonValue from './NestedJsonValue';
@@ -168,7 +167,7 @@ function renderPrettyObject(
   if (prefix) {
     elements.push(
       <span key={elements.length} className={styles.jsonPlain}>
-        {kw ? highlight(escapeJsonForHtml(prefix), kw) : prefix}
+        {kw ? highlight(prefix, kw) : prefix}
       </span>,
     );
   }
@@ -214,7 +213,7 @@ function renderPrettyObject(
       } else if (tok.kind === 'string-value') {
         elements.push(
           <span key={elKey} className={styles.jsonString}>
-            {kw ? highlight(escapeJsonForHtml(tok.text), kw) : tok.text}
+            {kw ? highlight(tok.text, kw) : tok.text}
           </span>,
         );
       } else if (tok.kind === 'number') {
@@ -256,7 +255,7 @@ function renderPrettyObject(
   if (suffix) {
     elements.push(
       <span key={elements.length} className={styles.jsonPlain}>
-        {kw ? highlight(escapeJsonForHtml(suffix), kw) : suffix}
+        {kw ? highlight(suffix, kw) : suffix}
       </span>,
     );
   }
@@ -324,7 +323,7 @@ function renderTokenizedLine(
             key={`s${idx}`}
             className={isNested ? styles.jsonStringNested : styles.jsonString}
           >
-            {kw ? highlight(escapeJsonForHtml(inner), kw) : inner}
+            {kw ? highlight(inner, kw) : inner}
           </span>,
         );
         if (tok.valueKeyIndex !== undefined) {
@@ -336,7 +335,7 @@ function renderTokenizedLine(
     } else {
       elements.push(
         <span key={`pl${idx}`} className={styles.jsonPlain}>
-          {kw ? highlight(escapeJsonForHtml(tok.text), kw) : tok.text}
+          {kw ? highlight(tok.text, kw) : tok.text}
         </span>,
       );
     }
