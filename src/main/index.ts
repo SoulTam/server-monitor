@@ -94,9 +94,9 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers();
 
-  await restoreMonitoringState();
-
   createWindow();
+
+  restoreMonitoringState();
 
   try {
     trayService.create();
