@@ -303,6 +303,8 @@ export default function ServerDetailPage(): JSX.Element {
     loadingRef.current = true;
     setLoading(true);
     try {
+      const el = logContentRef.current;
+      const prevScrollHeight = el?.scrollHeight || 0;
       const res = await window.electronAPI.logs.tailMore(
         id, selectedFilePathRef.current, loadedLinesFromEndRef.current, TAIL_LINES,
       );
@@ -311,11 +313,18 @@ export default function ServerDetailPage(): JSX.Element {
         if (chunk.length === 0) {
           hasMoreRef.current = false;
           setHasMore(false);
+          loadingRef.current = false;
+          setLoading(false);
           return;
         }
         const newLines = chunk.split('\n').filter(Boolean).length;
         setLogContent(prev => chunk + '\n' + prev);
         loadedLinesFromEndRef.current += newLines;
+        // Keep viewport stable after prepending content above
+        requestAnimationFrame(() => {
+          const el2 = logContentRef.current;
+          if (el2) el2.scrollTop += el2.scrollHeight - prevScrollHeight;
+        });
       }
     } catch (e) {
       message.error('加载更早日志失败');
@@ -341,11 +350,6 @@ export default function ServerDetailPage(): JSX.Element {
     // Default forward mode (from beginning): scroll near bottom loads next chunk
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMoreRef.current && !readingFromEndRef.current && selectedFilePathRef.current) {
       loadChunk(selectedFilePathRef.current, logOffsetRef.current);
-    }
-    // Detect if user scrolls away from bottom → switch out of tail-auto mode
-    if (readingFromEndRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 200) {
-      setReadingFromEnd(false);
-      readingFromEndRef.current = false;
     }
   };
 
