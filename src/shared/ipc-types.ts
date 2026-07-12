@@ -58,6 +58,19 @@ export interface AlertListOutput {
   pageSize: number;
 }
 
+export interface LogTailPayload {
+  serverId: string;
+  filePath: string;
+  nLines?: number;
+}
+
+export interface LogTailMorePayload {
+  serverId: string;
+  filePath: string;
+  skipFromEnd: number;
+  nLines?: number;
+}
+
 export interface ServerWithMetrics extends ServerConfig {
   latestMetrics?: {
     cpu?: number;

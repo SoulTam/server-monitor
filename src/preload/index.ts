@@ -4,6 +4,8 @@ import type {
   UpdateServerInput,
   GetHistoryInput,
   AlertListInput,
+  LogTailPayload,
+  LogTailMorePayload,
 } from '../shared/ipc-types';
 import type { IpcResponse, RealtimeMetrics, AlertRecord } from '../shared/types';
 
@@ -22,6 +24,8 @@ const IPC_CHANNELS = {
   ALERT_NOTIFICATION: 'alert:notification',
   LOG_LIST: 'log:list',
   LOG_READ: 'log:read',
+  LOG_TAIL: 'log:tail',
+  LOG_TAIL_MORE: 'log:tailMore',
 } as const;
 
 const electronAPI = {
@@ -70,6 +74,10 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.LOG_LIST, { serverId }),
     read: (serverId: string, filePath: string, offset?: number, length?: number): Promise<IpcResponse<string>> =>
       ipcRenderer.invoke(IPC_CHANNELS.LOG_READ, { serverId, filePath, offset, length }),
+    tail: (serverId: string, filePath: string, nLines?: number): Promise<IpcResponse<string>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.LOG_TAIL, { serverId, filePath, nLines } satisfies LogTailPayload),
+    tailMore: (serverId: string, filePath: string, skipFromEnd: number, nLines?: number): Promise<IpcResponse<string>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.LOG_TAIL_MORE, { serverId, filePath, skipFromEnd, nLines } satisfies LogTailMorePayload),
   },
   window: {
     minimize: (): void => ipcRenderer.send('window:minimize'),

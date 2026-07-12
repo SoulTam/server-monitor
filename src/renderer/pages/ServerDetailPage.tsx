@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Space, Tag, message, Segmented, Modal, Input, List, Spin } from 'antd';
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CloseOutlined, ArrowUpOutlined, ArrowDownOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
 import TrendChart from '../components/TrendChart';
 import RealtimeBar from '../components/RealtimeBar';
 import LogLineRenderer from '../components/LogLineRenderer';
@@ -45,6 +45,10 @@ export default function ServerDetailPage(): JSX.Element {
   const loadingRef = useRef(false);
   const selectedFilePathRef = useRef<string | null>(null);
   const logContentRef = useRef<HTMLDivElement>(null);
+  const [readingFromEnd, setReadingFromEnd] = useState(false);
+  const readingFromEndRef = useRef(false);
+  const loadedLinesFromEndRef = useRef(0);
+  const TAIL_LINES = 500;
   const [searchKeyword, setSearchKeyword] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -257,6 +261,12 @@ export default function ServerDetailPage(): JSX.Element {
     setLoading(false);
   }, [id]);
 
+  const scrollToBottom = (): void => {
+    const el = logContentRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  };
+
   const handleReadLog = async (filePath: string): Promise<void> => {
     setSelectedFilePath(filePath);
     selectedFilePathRef.current = filePath;
@@ -269,24 +279,73 @@ export default function ServerDetailPage(): JSX.Element {
     setCurrentMatchIndex(-1);
     autoPositionRef.current = true;
     setExpandedNestedKeys(new Set());
-    const readRes = await window.electronAPI.logs.read(id!, filePath, 0, CHUNK_SIZE);
+    setReadingFromEnd(true);
+    readingFromEndRef.current = true;
+    loadedLinesFromEndRef.current = 0;
+    const readRes = await window.electronAPI.logs.tail(id!, filePath, TAIL_LINES);
     if (readRes.success) {
       const chunk = readRes.data as string;
       if (chunk.length === 0) {
         hasMoreRef.current = false;
         setHasMore(false);
-      }
+      } else {
+        const lineCount = chunk.split('\n').filter(Boolean).length;
         setLogContent(chunk);
+        loadedLinesFromEndRef.current = lineCount;
+      }
     } else {
       message.error(readRes.error || '读取日志文件失败');
     }
   };
 
+  const loadEarlierChunk = useCallback(async (): Promise<void> => {
+    if (!id || !selectedFilePathRef.current || !readingFromEndRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      const res = await window.electronAPI.logs.tailMore(
+        id, selectedFilePathRef.current, loadedLinesFromEndRef.current, TAIL_LINES,
+      );
+      if (res.success) {
+        const chunk = (res.data as string).trimEnd();
+        if (chunk.length === 0) {
+          hasMoreRef.current = false;
+          setHasMore(false);
+          return;
+        }
+        const newLines = chunk.split('\n').filter(Boolean).length;
+        setLogContent(prev => chunk + '\n' + prev);
+        loadedLinesFromEndRef.current += newLines;
+      }
+    } catch (e) {
+      message.error('加载更早日志失败');
+    }
+    loadingRef.current = false;
+    setLoading(false);
+  }, [id]);
+
+  const handleJumpToLatest = (): void => {
+    scrollToBottom();
+    setReadingFromEnd(true);
+    readingFromEndRef.current = true;
+  };
+
   const handleContentScroll = (): void => {
     const el = logContentRef.current;
-    if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMoreRef.current && !loadingRef.current && selectedFilePathRef.current) {
+    if (!el || loadingRef.current) return;
+    // Tail mode: scroll to top loads earlier content
+    if (readingFromEndRef.current && el.scrollTop < 100 && hasMoreRef.current && selectedFilePathRef.current) {
+      loadEarlierChunk();
+      return;
+    }
+    // Default forward mode (from beginning): scroll near bottom loads next chunk
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMoreRef.current && !readingFromEndRef.current && selectedFilePathRef.current) {
       loadChunk(selectedFilePathRef.current, logOffsetRef.current);
+    }
+    // Detect if user scrolls away from bottom → switch out of tail-auto mode
+    if (readingFromEndRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 200) {
+      setReadingFromEnd(false);
+      readingFromEndRef.current = false;
     }
   };
 
@@ -324,6 +383,13 @@ export default function ServerDetailPage(): JSX.Element {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentMatchIndex, matchPositions]);
+
+  // Auto-scroll to bottom after tail content loads
+  useEffect(() => {
+    if (readingFromEnd && logContent) {
+      requestAnimationFrame(() => scrollToBottom());
+    }
+  }, [readingFromEnd, logContent]);
 
   const goToPrevMatch = (): void => {
     autoPositionRef.current = false;
@@ -562,38 +628,53 @@ export default function ServerDetailPage(): JSX.Element {
             onMouseEnter={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#d9d9d9'; }}
             onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#f0f0f0'; }}
           />
-          <div
-            ref={logContentRef}
-            style={{ flex: 1, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, fontSize: 13, fontFamily: 'monospace' }}
-            onScroll={handleContentScroll}
-          >
-            {!logContent && <span key="empty" style={{ color: '#999' }}>选择文件以查看内容</span>}
-            {logContent && lines.map((line, i) => {
-              const isActive = currentMatchIndex >= 0 && matchPositions[currentMatchIndex] === i;
-              return (
-                <div
-                  key={`l${i}`}
-                  data-line-index={i}
-                  style={isActive ? { background: '#fff8e1', outline: '2px solid #ff9800', outlineOffset: -1, borderRadius: 2 } : undefined}
-                >
-                  <LogLineRenderer
-                    rawLine={line}
-                    lineIndex={i}
-                    highlight={debouncedSearch || undefined}
-                    expandedKeys={expandedNestedKeys}
-                    onToggle={handleNestedToggle}
-                  />
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div
+              ref={logContentRef}
+              style={{ height: '100%', overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, fontSize: 13, fontFamily: 'monospace' }}
+              onScroll={handleContentScroll}
+            >
+              {!logContent && <span key="empty" style={{ color: '#999' }}>选择文件以查看内容</span>}
+              {logContent && lines.map((line, i) => {
+                const isActive = currentMatchIndex >= 0 && matchPositions[currentMatchIndex] === i;
+                return (
+                  <div
+                    key={`l${i}`}
+                    data-line-index={i}
+                    style={isActive ? { background: '#fff8e1', outline: '2px solid #ff9800', outlineOffset: -1, borderRadius: 2 } : undefined}
+                  >
+                    <LogLineRenderer
+                      rawLine={line}
+                      lineIndex={i}
+                      highlight={debouncedSearch || undefined}
+                      expandedKeys={expandedNestedKeys}
+                      onToggle={handleNestedToggle}
+                    />
+                  </div>
+                );
+              })}
+              {loading && (
+                <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>
+                  <Spin size="small" /> 加载中...
                 </div>
-              );
-            })}
-            {loading && (
-              <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>
-                <Spin size="small" /> 加载中...
-              </div>
-            )}
-            {!hasMore && logContent && (
-              <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>--- 已加载全部内容 ---</div>
-            )}
+              )}
+              {!hasMore && logContent && (
+                <div style={{ textAlign: 'center', padding: 8, color: '#999' }}>--- 已加载全部内容 ---</div>
+              )}
+            </div>
+            <Button
+              type="primary"
+              shape="circle"
+              icon={<VerticalAlignBottomOutlined />}
+              size="small"
+              title="跳至最新"
+              onClick={handleJumpToLatest}
+              style={{
+                position: 'absolute', bottom: 12, right: 12, zIndex: 10,
+                opacity: readingFromEnd ? 0.5 : 0.9,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              }}
+            />
           </div>
         </div>
       </Modal>

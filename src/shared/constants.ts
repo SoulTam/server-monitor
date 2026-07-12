@@ -13,6 +13,8 @@ export const IPC_CHANNELS = {
   ALERT_NOTIFICATION: 'alert:notification',
   LOG_LIST: 'log:list',
   LOG_READ: 'log:read',
+  LOG_TAIL: 'log:tail',
+  LOG_TAIL_MORE: 'log:tailMore',
 } as const;
 
 export const DEFAULT_SERVER_CONFIG = {

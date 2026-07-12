@@ -11,6 +11,8 @@ import type {
   UpdateServerInput,
   GetHistoryInput,
   AlertListInput,
+  LogTailPayload,
+  LogTailMorePayload,
 } from '../../shared/ipc-types';
 import type { IpcResponse } from '../../shared/types';
 
@@ -105,6 +107,46 @@ export function registerIpcHandlers(): void {
         return buf.toString('utf8');
       }
       cmd = `cat ${filePath}`;
+      const out = await sshService.executeCommand(serverId, cmd);
+      return out;
+    }),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.LOG_TAIL, (_e, payload: LogTailPayload) =>
+    wrap(async () => {
+      const { serverId, filePath, nLines = 500 } = payload;
+      const server = serverConfigService.getServer(serverId);
+      if (!server) throw new Error('SERVER_NOT_FOUND');
+      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
+      if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
+      if (!sshService.isConnected(serverId)) {
+        await sshService.connect(serverId, {
+          host: server.ip, port: server.port, username: server.username,
+          authType: server.authType, password: server.password,
+          privateKeyPath: server.privateKeyPath, privateKeyPassphrase: server.privateKeyPassphrase,
+        });
+      }
+      const cmd = `tail -n ${nLines} ${filePath}`;
+      const out = await sshService.executeCommand(serverId, cmd);
+      return out;
+    }),
+  );
+
+  ipcMain.handle(IPC_CHANNELS.LOG_TAIL_MORE, (_e, payload: LogTailMorePayload) =>
+    wrap(async () => {
+      const { serverId, filePath, skipFromEnd, nLines = 500 } = payload;
+      const server = serverConfigService.getServer(serverId);
+      if (!server) throw new Error('SERVER_NOT_FOUND');
+      if (!server.logsPath) throw new Error('LOGS_PATH_NOT_CONFIGURED');
+      if (!filePath.startsWith(server.logsPath)) throw new Error('ACCESS_DENIED');
+      if (!sshService.isConnected(serverId)) {
+        await sshService.connect(serverId, {
+          host: server.ip, port: server.port, username: server.username,
+          authType: server.authType, password: server.password,
+          privateKeyPath: server.privateKeyPath, privateKeyPassphrase: server.privateKeyPassphrase,
+        });
+      }
+      const cmd = `total=$(wc -l < ${filePath}) && skip=$((total - ${skipFromEnd})) && head -n $skip ${filePath} | tail -n ${nLines}`;
       const out = await sshService.executeCommand(serverId, cmd);
       return out;
     }),

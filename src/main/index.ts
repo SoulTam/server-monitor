@@ -69,6 +69,20 @@ function createWindow(): void {
   });
 }
 
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  const win = getMainWindow();
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   try {
     getDatabase();
