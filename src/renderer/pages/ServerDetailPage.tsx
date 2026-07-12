@@ -292,6 +292,8 @@ export default function ServerDetailPage(): JSX.Element {
         const lineCount = chunk.split('\n').filter(Boolean).length;
         setLogContent(chunk);
         loadedLinesFromEndRef.current = lineCount;
+        // Scroll to bottom after initial tail load
+        requestAnimationFrame(() => scrollToBottom());
       }
     } else {
       message.error(readRes.error || '读取日志文件失败');
@@ -320,10 +322,12 @@ export default function ServerDetailPage(): JSX.Element {
         const newLines = chunk.split('\n').filter(Boolean).length;
         setLogContent(prev => chunk + '\n' + prev);
         loadedLinesFromEndRef.current += newLines;
-        // Keep viewport stable after prepending content above
+        // Keep viewport stable after prepending — double rAF ensures DOM is updated
         requestAnimationFrame(() => {
-          const el2 = logContentRef.current;
-          if (el2) el2.scrollTop += el2.scrollHeight - prevScrollHeight;
+          requestAnimationFrame(() => {
+            const el2 = logContentRef.current;
+            if (el2) el2.scrollTop += el2.scrollHeight - prevScrollHeight;
+          });
         });
       }
     } catch (e) {
@@ -387,13 +391,6 @@ export default function ServerDetailPage(): JSX.Element {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentMatchIndex, matchPositions]);
-
-  // Auto-scroll to bottom after tail content loads
-  useEffect(() => {
-    if (readingFromEnd && logContent) {
-      requestAnimationFrame(() => scrollToBottom());
-    }
-  }, [readingFromEnd, logContent]);
 
   const goToPrevMatch = (): void => {
     autoPositionRef.current = false;
